@@ -48,7 +48,30 @@ SYNONYM_FIELDS: dict[str, tuple[str, bool, list[str]]] = {
     "approved_by": ("Approved By", False, ["approved by", "approver"]),
 }
 
-FIELDS = {"TAXONOMY": TAXONOMY_FIELDS, "SRP": SRP_FIELDS, "SYNONYMS": SYNONYM_FIELDS}
+COMPETITOR_CRAWL_FIELDS: dict[str, tuple[str, bool, list[str]]] = {
+    "url": ("URL", True, ["address", "url", "page url", "網址", "link"]),
+    "breadcrumb": ("Breadcrumb", False, ["breadcrumb", "breadcrumbs", "breadcrumb 1", "麵包屑", "breadcrumb text", "breadcrumb path"]),
+    "title": ("Title", False, ["title 1", "title", "page title", "meta title"]),
+    "h1": ("H1", False, ["h1-1", "h1 1", "h1", "heading"]),
+    "status_code": ("Status Code", False, ["status code", "status", "http status"]),
+    "canonical": ("Canonical", False, ["canonical link element 1", "canonical", "canonical url"]),
+    "indexability": ("Indexability", False, ["indexability", "indexable"]),
+    "page_type": ("Page Type", False, ["page type", "type", "template"]),
+    "parent_url": ("Parent URL", False, ["parent url", "source", "referrer", "from"]),
+    "anchor_text": ("Anchor Text", False, ["anchor text", "anchor", "link text"]),
+    "depth": ("Crawl Depth", False, ["crawl depth", "depth", "level"]),
+    "product_count": ("Product Count", False, ["product count", "products", "商品數"]),
+}
+
+FIELDS = {"TAXONOMY": TAXONOMY_FIELDS, "SRP": SRP_FIELDS, "SYNONYMS": SYNONYM_FIELDS, "COMPETITOR_CRAWL": COMPETITOR_CRAWL_FIELDS}
+
+_BC_COL = re.compile(r"^\s*(breadcrumb|bread crumb|麵包屑)[\s_\-]*(\d+)\s*$", re.I)
+
+
+def breadcrumb_columns(columns: list[str]) -> list[str]:
+    """Numbered breadcrumb columns from crawler exports (Breadcrumb 1, Breadcrumb 2, …), in order."""
+    hits = [(int(m.group(2)), c) for c in columns if (m := _BC_COL.match(str(c)))]
+    return [c for _, c in sorted(hits)]
 
 
 def read_table(path: str | Path, max_rows: int | None = None) -> tuple[list[str], list[dict]]:
@@ -106,7 +129,16 @@ def _h(s: str) -> str:
 
 
 def suggest_mapping(kind: str, columns: list[str]) -> dict[str, str | None]:
-    fields = FIELDS[kind]
+    if kind == "COMPETITOR_CRAWL":
+        bc_cols = breadcrumb_columns(columns)
+        out = _suggest(FIELDS[kind], [c for c in columns if c not in bc_cols])
+        if bc_cols and not out.get("breadcrumb"):
+            out["_breadcrumb_columns"] = "|".join(bc_cols)  # joined in order at import
+        return out
+    return _suggest(FIELDS[kind], columns)
+
+
+def _suggest(fields, columns: list[str]) -> dict[str, str | None]:
     used: set[str] = set()
     out: dict[str, str | None] = {}
     norm_cols = {c: _h(c) for c in columns}
@@ -124,6 +156,12 @@ def suggest_mapping(kind: str, columns: list[str]) -> dict[str, str | None]:
 
 def validate_mapping(kind: str, mapping: dict[str, str | None]) -> list[str]:
     errs = []
+    if kind == "COMPETITOR_CRAWL":
+        if not mapping.get("url"):
+            errs.append("URL is required")
+        if not (mapping.get("breadcrumb") or mapping.get("_breadcrumb_columns") or mapping.get("h1") or mapping.get("title")):
+            errs.append("Map a Breadcrumb column (or at least H1 / Title)")
+        return errs
     if kind == "TAXONOMY":
         if not mapping.get("url"):
             errs.append("Category URL is required")

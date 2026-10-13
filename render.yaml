@@ -11,7 +11,7 @@ services:
         sync: false
       - key: API_TOKEN        # the team password people type on the login screen
         sync: false
-      - key: ANTHROPIC_API_KEY  # optional — enables the LLM fallback
+      - key: OPENAI_API_KEY   # optional — enables the AI fallback (or set ANTHROPIC_API_KEY instead)
         sync: false
       - key: EMBEDDED_WORKER
         value: "true"

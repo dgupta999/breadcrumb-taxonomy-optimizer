@@ -21,6 +21,7 @@ import RulesPage from "./pages/Rules";
 import ReviewQueue from "./pages/ReviewQueue";
 import ExportsPage from "./pages/Exports";
 import HistoryPage from "./pages/History";
+import CategoryFocus from "./pages/CategoryFocus";
 
 const qc = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1 } } });
 
@@ -34,6 +35,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route element={<Layout />}>
               <Route index element={<Dashboard />} />
               <Route path="projects" element={<Projects />} />
+              <Route path="focus" element={<CategoryFocus />} />
               <Route path="upload" element={<UploadPage />} />
               <Route path="srp" element={<SrpMapping />} />
               <Route path="audit" element={<AuditPage />} />

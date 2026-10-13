@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FileUp } from "lucide-react";
 import { api, type Paged } from "@/lib/api";
@@ -11,7 +11,23 @@ import { Badge, Button, Card, Crumb, Label, PageHeader, Select } from "@/compone
 type Field = { field: string; label: string; required: boolean };
 type UploadResp = { id: number; kind: string; filename: string; columns: string[]; row_count: number; mapping: Record<string, string | null>; sample: Record<string, string | null>[]; fields: Field[] };
 
-export function Uploader({ kind, title, description, then }: { kind: "TAXONOMY" | "SRP" | "SYNONYMS"; title: string; description: string; then?: string[] }) {
+export function Uploader({
+  kind,
+  title,
+  description,
+  then,
+  extra,
+  blockedReason,
+  children,
+}: {
+  kind: "TAXONOMY" | "SRP" | "SYNONYMS" | "COMPETITOR_CRAWL";
+  title: string;
+  description: string;
+  then?: string[];
+  extra?: Record<string, unknown>;
+  blockedReason?: string | null;
+  children?: ReactNode;
+}) {
   const { projectId } = useProject();
   const [up, setUp] = useState<UploadResp | null>(null);
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
@@ -45,6 +61,7 @@ export function Uploader({ kind, title, description, then }: { kind: "TAXONOMY" 
       const r = await api.post<Job | { imported: { imported: number } }>(`/projects/${projectId}/uploads/${up.id}/commit`, {
         mapping,
         then: (then || []).map((t) => ({ job_type: t })),
+        ...(extra || {}),
       });
       if ("id" in r) setJobId(r.id);
       else setDone(`Imported ${r.imported.imported} rows`);
@@ -56,6 +73,7 @@ export function Uploader({ kind, title, description, then }: { kind: "TAXONOMY" 
 
   return (
     <Card title={title} subtitle={description}>
+      {children}
       {!up && (
         <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-sm text-slate-600 hover:border-indigo-400 hover:bg-indigo-50/40">
           <FileUp size={22} className="text-slate-400" />
@@ -86,6 +104,11 @@ export function Uploader({ kind, title, description, then }: { kind: "TAXONOMY" 
               ))}
             </div>
           </div>
+          {mapping._breadcrumb_columns && !mapping.breadcrumb && (
+            <div className="rounded-md bg-indigo-50 px-3 py-2 text-xs text-indigo-800">
+              Breadcrumb will be built from columns: <b>{String(mapping._breadcrumb_columns).split("|").join(" › ")}</b>
+            </div>
+          )}
           <div>
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Preview</div>
             <div className="max-h-56 overflow-auto rounded border border-slate-200">
@@ -115,7 +138,8 @@ export function Uploader({ kind, title, description, then }: { kind: "TAXONOMY" 
             </div>
           </div>
           <div className="flex gap-2">
-            <Button onClick={commit}>Import {up.row_count} rows</Button>
+            <Button onClick={commit} disabled={!!blockedReason} title={blockedReason || undefined}>Import {up.row_count} rows</Button>
+            {blockedReason && <span className="self-center text-xs text-amber-700">{blockedReason}</span>}
             <Button variant="ghost" onClick={() => setUp(null)}>
               Cancel
             </Button>

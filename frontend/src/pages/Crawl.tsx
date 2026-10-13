@@ -7,6 +7,7 @@ import { useProject } from "@/lib/project";
 import { DataTable, ExportButtons, FilterChips, NeedProject, Pager, SearchBox } from "@/components/common";
 import { JobProgress } from "@/components/jobs";
 import { Button, Card, Input, Label, PageHeader, Select, StatusBadge, Textarea } from "@/components/ui";
+import { Uploader } from "./Upload";
 
 const TYPES = ["CATEGORY", "SUBCATEGORY", "PRODUCT", "SRP", "FILTER", "CAMPAIGN", "CONTENT", "UNKNOWN", "BLOCKED"];
 const EMPTY = { name: "", start_url: "", target_category: "3C", max_urls: "1000", max_depth: "5", include: "", exclude: "", render_js: false, crawl_delay: "1.5" };
@@ -23,6 +24,8 @@ export default function CrawlPageView() {
     refetchInterval: (q) => (q.state.data?.some((c) => ["QUEUED", "RUNNING", "CANCEL_REQUESTED"].includes(c.last_job?.status || "")) ? 2000 : false),
   });
   const [compFilter, setCompFilter] = useState<string>("");
+  const [upComp, setUpComp] = useState<string>("");
+  const [append, setAppend] = useState(false);
   const [types, setTypes] = useState<string[]>([]);
   const [q, setQ] = useState("");
   const [offset, setOffset] = useState(0);
@@ -74,8 +77,32 @@ export default function CrawlPageView() {
         title="Competitor crawl"
         description="Crawls run in a background worker: same host only, start URL only, robots.txt respected, polite delay, retries, deduplication. Product, cart, checkout, login, account, tracking, sort/filter/search and campaign URLs are skipped."
       />
+      <div className="mb-5">
+        <Uploader
+          kind="COMPETITOR_CRAWL"
+          title="Upload a competitor crawl file (recommended)"
+          description="Export from Screaming Frog / Sitebulb / any crawler as CSV or XLSX. Needed: URL + Breadcrumb (one 'A > B > C' column or Breadcrumb 1, 2, 3… columns). H1, Title, Status Code, Canonical optional. Product pages are fine — their breadcrumbs reveal category paths. After import the competitor tree, comparison and gap detection run automatically."
+          extra={{ competitor_id: upComp ? Number(upComp) : null, append }}
+          blockedReason={upComp ? null : "Choose the competitor first"}
+        >
+          <div className="mb-3 flex flex-wrap items-end gap-3">
+            <div>
+              <Label required>Competitor</Label>
+              <Select value={upComp} onChange={(e) => setUpComp(e.target.value)}>
+                <option value="">Choose…</option>
+                {comps.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+            </div>
+            <label className="flex items-center gap-2 pb-2 text-xs text-slate-600">
+              <input type="checkbox" checked={append} onChange={(e) => setAppend(e.target.checked)} />
+              Append to this competitor's previous file (crawl split over several exports)
+            </label>
+            {comps.data?.length === 0 && <span className="pb-2 text-xs text-amber-700">Add the competitor (name + any start URL) in the form below first.</span>}
+          </div>
+        </Uploader>
+      </div>
       <div className="grid gap-5 xl:grid-cols-3">
-        <Card title="Add competitor start URL" className="xl:col-span-1">
+        <Card title="Add competitor (optional server crawl)" subtitle="Name + start URL. Use 'Start crawl' only if you want the server to crawl; with an uploaded file you can skip it." className="xl:col-span-1">
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <div><Label required>Competitor name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="MOMO" /></div>

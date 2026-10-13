@@ -75,6 +75,16 @@ The LLM never crawls, never builds breadcrumbs and never overrides a human appro
 
 Deploy the backend (Docker, Fly, Render, a VM, etc.) with `uvicorn app.main:app`. For long crawls, also run `python -m app.worker` with `EMBEDDED_WORKER=false`.
 
+## Recommended workflow: your own crawl files + Category Focus
+
+1. **Upload Taxonomy**: upload the Coupang taxonomy and the SRP file.
+2. **Competitor Crawl**: add MOMO and PChome (name and any start URL). Then upload each competitor's crawl export (CSV or XLSX from Screaming Frog or similar) with **URL + Breadcrumb**. Breadcrumbs can be one `A > B > C` column or numbered `Breadcrumb 1..N` columns. Product pages are fine. The competitor tree, comparison and gap detection run automatically after import.
+3. **Category Focus**: type a category (e.g. `滑鼠`, `網路設備`, `mouse`). You get every competitor category and URL in it, its breadcrumb, whether Coupang has it, and where each missing one fits (CN and EN breadcrumb, gap type, SRP demand). Click **XLSX** or **CSV** to download.
+
+Sample files: `sample_data/momo_crawl_sample.csv`, `sample_data/pchome_crawl_sample.xlsx`.
+
+**AI fallback:** set `OPENAI_API_KEY` (optional `OPENAI_MODEL`, default `gpt-4.1-mini`) or `ANTHROPIC_API_KEY`. With neither set, the tool runs on rules only.
+
 ## Workflow → where it runs
 
 | Step | Page | Job type |

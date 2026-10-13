@@ -407,6 +407,25 @@ def final_taxonomy(db: Session, pid: int) -> list[Sheet]:
     return [Sheet("Final Approved Taxonomy", cols, rows)]
 
 
+def focus_sheets(res: dict) -> list[Sheet]:
+    cols = ["Competitor", "Competitor Category", "Competitor Breadcrumb", "Competitor URL", "Status in Coupang", "Classification",
+            "Coupang Category", "Coupang URL", "Coupang Breadcrumb CN", "Coupang Breadcrumb EN", "Suggested Parent",
+            "Suggested Parent Status", "Suggested Breadcrumb CN", "Suggested Breadcrumb EN", "Gap Type", "Recommended Action",
+            "Supporting SRPs", "SRP Count", "Search Volume", "Products Seen", "Hierarchy Source", "Confidence", "Reason"]
+    rows = [[r["competitor"], r["competitor_category"], r["competitor_breadcrumb"], r["competitor_url"], r["status"], r["classification"],
+             r["coupang_category"], r["coupang_url"], r["coupang_breadcrumb_cn"], r["coupang_breadcrumb_en"], r["suggested_parent"],
+             r["suggested_parent_status"], r["suggested_breadcrumb_cn"], r["suggested_breadcrumb_en"], r["gap_type"], r["recommended_action"],
+             _j([f"{s['keyword']} ({s.get('search_volume') or 0})" for s in r["supporting_srps"]]), r["srp_count"], r["search_volume"],
+             r["products_seen"], r["hierarchy_source"], r["confidence"], r["reason"]] for r in res["rows"]]
+    urls = [[u["competitor"], u["url"], u["page_type"], u["breadcrumb"], u["h1"], u["title"], u["status_code"]] for u in res["urls"]]
+    coupang = [[c["category"], c["name_en"], c["breadcrumb_cn"], c["url"], _j(c["competitors_with_it"]) or "none"] for c in res["coupang_categories"]]
+    return [
+        Sheet("Category Focus", cols, rows),
+        Sheet("Competitor URLs", ["Competitor", "URL", "Page Type", "Breadcrumb", "H1", "Title", "Status Code"], urls),
+        Sheet("Coupang Categories", ["Coupang Category", "Name EN", "Breadcrumb CN", "URL", "Competitors With It"], coupang),
+    ]
+
+
 EXPORTS: dict[str, tuple[str, Callable[[Session, int], list[Sheet]]]] = {
     "current_taxonomy_tree": ("Current Taxonomy Tree", taxonomy_tree),
     "breadcrumb_audit": ("Breadcrumb Audit", breadcrumb_audit),

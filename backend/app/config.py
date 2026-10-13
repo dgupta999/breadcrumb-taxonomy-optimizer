@@ -37,6 +37,10 @@ class Settings:
 
     # LLM fallback (only used for ambiguous decisions / missing translations).
     anthropic_api_key: str | None = os.getenv("ANTHROPIC_API_KEY") or None
+    openai_api_key: str | None = os.getenv("OPENAI_API_KEY") or None
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+    # anthropic | openai | auto (auto = whichever key is set; Anthropic if both)
+    llm_provider_setting: str = os.getenv("LLM_PROVIDER", "auto").lower()
     llm_enabled: bool = _bool("LLM_ENABLED", True)
     llm_model: str = os.getenv("LLM_MODEL", "claude-opus-5-5")
     llm_effort: str = os.getenv("LLM_EFFORT", "low")
@@ -52,8 +56,15 @@ class Settings:
     crawl_max_retries: int = int(os.getenv("CRAWL_MAX_RETRIES", "2"))
 
     @property
+    def llm_provider(self) -> str | None:
+        p = self.llm_provider_setting
+        if p == "openai" or (p == "auto" and not self.anthropic_api_key and self.openai_api_key):
+            return "openai" if self.openai_api_key else None
+        return "anthropic" if self.anthropic_api_key else None
+
+    @property
     def llm_available(self) -> bool:
-        return self.llm_enabled and bool(self.anthropic_api_key)
+        return self.llm_enabled and self.llm_provider is not None
 
 
 settings = Settings()

@@ -63,7 +63,8 @@ def auth_check():
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "llm_available": settings.llm_available, "llm_model": settings.llm_model if settings.llm_available else None,
+    return {"ok": True, "llm_available": settings.llm_available, "llm_provider": settings.llm_provider if settings.llm_available else None,
+            "llm_model": (settings.openai_model if settings.llm_provider == "openai" else settings.llm_model) if settings.llm_available else None,
             "database": "postgres" if settings.database_url.startswith("postgres") else "sqlite",
             "auth_required": bool(settings.api_token)}
 

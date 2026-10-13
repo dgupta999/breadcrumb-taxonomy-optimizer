@@ -2,7 +2,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   BookOpenCheck, Boxes, ClipboardCheck, Download, FolderKanban, GitCompare, GitFork, History, LayoutDashboard, ListTree,
-  Network, Replace, Route, ScanSearch, ShieldCheck, Upload,
+  Network, Replace, Route, ScanSearch, ShieldCheck, Target, Upload,
 } from "lucide-react";
 import { api, getToken, setToken } from "@/lib/api";
 import { useProject } from "@/lib/project";
@@ -11,6 +11,7 @@ import { cn } from "./ui";
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/projects", label: "Projects", icon: FolderKanban },
+  { to: "/focus", label: "Category Focus", icon: Target },
   { to: "/upload", label: "Upload Taxonomy", icon: Upload },
   { to: "/srp", label: "SRP Mapping", icon: Route },
   { to: "/audit", label: "Breadcrumb Audit", icon: ScanSearch },

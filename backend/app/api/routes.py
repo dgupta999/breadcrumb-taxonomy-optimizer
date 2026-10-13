@@ -147,7 +147,7 @@ def upload_fields():
 async def upload_file(kind: str = Form(...), file: UploadFile = File(...), p: Project = Depends(get_project), db: Session = Depends(get_db)):
     kind = kind.upper()
     if kind not in FIELDS:
-        raise HTTPException(400, "kind must be TAXONOMY, SRP or SYNONYMS")
+        raise HTTPException(400, "kind must be TAXONOMY, SRP, SYNONYMS or COMPETITOR_CRAWL")
     ext = Path(file.filename or "").suffix.lower()
     if ext not in (".csv", ".xlsx", ".xlsm", ".tsv", ".txt"):
         raise HTTPException(400, "Upload a CSV or XLSX file")
@@ -179,6 +179,8 @@ class CommitIn(BaseModel):
     mapping: dict[str, str | None]
     replace: bool = True
     then: list = Field(default_factory=list)
+    competitor_id: int | None = None  # COMPETITOR_CRAWL uploads
+    append: bool = False
 
 
 @router.post("/projects/{project_id}/uploads/{upload_id}/commit")
@@ -197,6 +199,16 @@ def commit_upload(upload_id: int, body: CommitIn, p: Project = Depends(get_proje
         up.status = "IMPORTED"
         db.commit()
         return {"imported": res}
+    if up.kind == "COMPETITOR_CRAWL":
+        comp = db.get(Competitor, body.competitor_id) if body.competitor_id else None
+        if comp is None or comp.project_id != p.id:
+            raise HTTPException(400, "Choose which competitor this crawl file belongs to")
+        then = body.then or [{"job_type": "COMPARE_TAXONOMY"}, {"job_type": "DETECT_GAPS"}]
+        job = enqueue(db, p.id, "IMPORT_COMPETITOR_CRAWL", {"upload_id": up.id, "mapping": body.mapping, "competitor_id": comp.id,
+                                                            "append": body.append, "then": then})
+        up.status = "QUEUED"
+        db.commit()
+        return to_dict(job)
     job_type = {"TAXONOMY": "IMPORT_TAXONOMY", "SRP": "IMPORT_SRP"}[up.kind]
     job = enqueue(db, p.id, job_type, {"upload_id": up.id, "mapping": body.mapping, "replace": body.replace, "then": body.then})
     up.status = "QUEUED"
@@ -664,6 +676,27 @@ def history(page: Page = Depends(), p: Project = Depends(get_project), db: Sessi
     exports = [to_dict(e) for e in db.scalars(select(Export).where(Export.project_id == p.id).order_by(Export.id.desc()).limit(200))]
     jobs = [to_dict(j, {"result"}) for j in db.scalars(select(JobRun).where(JobRun.project_id == p.id).order_by(JobRun.id.desc()).limit(200))]
     return {"reviews": reviews, "overrides": overrides, "exports": exports, "jobs": jobs}
+
+
+# ============================================================== category focus
+@router.get("/projects/{project_id}/category-focus")
+def category_focus_ep(category: str = Query(..., min_length=1), competitor_id: str | None = None,
+                      format: str = Query("json", pattern="^(json|xlsx|csv)$"), p: Project = Depends(get_project), db: Session = Depends(get_db)):
+    from ..core.context import load_context
+    from ..core.focus import category_focus
+    from ..exporter import focus_sheets, to_csv, to_xlsx
+
+    ctx = load_context(db, p)
+    ids = [int(x) for x in multi(competitor_id)] or None
+    res = category_focus(db, ctx, category.strip(), ids)
+    if format == "json":
+        return res
+    sheets = focus_sheets(res)
+    data = to_xlsx(sheets) if format == "xlsx" else to_csv(sheets)
+    db.add(Export(project_id=p.id, export_key=f"category_focus:{category}", format=format,
+                  filename=f"Category Focus - {category}.{format}", row_count=len(res["rows"])))
+    db.commit()
+    return _file(f"Category Focus - {category}.{format}", data, format)
 
 
 # ============================================================== exports

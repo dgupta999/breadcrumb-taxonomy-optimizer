@@ -84,7 +84,43 @@ def _get_client():
     return _client
 
 
+def _call_openai(system: str, prompt: str, schema: dict, max_tokens: int) -> dict | None:
+    import httpx
+
+    body = {
+        "model": settings.openai_model,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+        "max_completion_tokens": max_tokens,
+        "response_format": {"type": "json_schema", "json_schema": {"name": "result", "strict": True, "schema": schema}},
+    }
+    for attempt in range(3):
+        try:
+            r = httpx.post("https://api.openai.com/v1/chat/completions", json=body, timeout=120,
+                           headers={"Authorization": f"Bearer {settings.openai_api_key}"})
+        except httpx.HTTPError as e:
+            log.warning("OpenAI connection error: %s", e)
+            continue
+        if r.status_code in (429, 500, 502, 503) and attempt < 2:
+            import time
+
+            time.sleep(2 ** (attempt + 1))
+            continue
+        if r.status_code != 200:
+            log.warning("OpenAI error %s: %s", r.status_code, r.text[:300])
+            return None
+        msg = r.json()["choices"][0]["message"]
+        if msg.get("refusal") or not msg.get("content"):
+            return None
+        try:
+            return json.loads(msg["content"])
+        except json.JSONDecodeError:
+            return None
+    return None
+
+
 def _call_json(system: str, prompt: str, schema: dict, max_tokens: int = 2000) -> dict | None:
+    if settings.llm_provider == "openai":
+        return _call_openai(system, prompt, schema, max_tokens)
     import anthropic
 
     try:

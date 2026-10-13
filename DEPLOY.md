@@ -23,14 +23,14 @@ The deploy produces one public URL, for example `https://breadcrumb-taxonomy-opt
 2. Fill in the secret values when Render asks:
    - `DATABASE_URL`: the Supabase URI from step 1.
    - `API_TOKEN`: the team password you will share with colleagues. Make it long.
-   - `ANTHROPIC_API_KEY`: optional. Leave it empty to run on rules only.
+   - `OPENAI_API_KEY`: optional. Leave it empty to run on rules only. (`ANTHROPIC_API_KEY` also works.)
 3. Click **Apply**. The first Docker build takes 5–10 minutes because it installs Chromium for the crawler.
 4. When the service is live, open its `onrender.com` URL and sign in with the team password.
 
 Share the URL and the password with your team; send the password separately.
 
 ## Notes
-- **Plan:** `render.yaml` uses the **Starter** plan (about $7/month). The free plan sleeps after 15 minutes idle, and its 512 MB of memory is too little for Chromium. A sleeping service also stops crawls in progress.
+- **Plan:** `render.yaml` uses the **free** plan. It sleeps after 15 minutes idle, and the first visit after that takes 30–60 seconds. Upload your MOMO/PChome crawl files instead of crawling on the server; the free plan's 512 MB is too little for Chromium.
 - **Your data:** it lives in Supabase, so redeploys keep it. Uploaded files and exports are temporary, which is fine because both are processed or generated on demand.
 - **Custom domain:** in Render, go to **Settings → Custom Domains** to add one such as `seo-tools.yourcompany.com`.
 - **Updates:** every `git push` to `main` redeploys automatically.

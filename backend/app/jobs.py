@@ -18,7 +18,7 @@ _claim_lock = threading.Lock()
 
 JOB_TYPES = [
     "IMPORT_TAXONOMY", "IMPORT_SRP", "BUILD_TAXONOMY", "MAP_SRP", "AUDIT_BREADCRUMBS", "CRAWL_COMPETITOR",
-    "BUILD_COMPETITOR_TREE", "COMPARE_TAXONOMY", "DETECT_GAPS", "GENERATE_EXPORT",
+    "BUILD_COMPETITOR_TREE", "COMPARE_TAXONOMY", "DETECT_GAPS", "GENERATE_EXPORT", "IMPORT_COMPETITOR_CRAWL",
 ]
 
 
@@ -129,6 +129,24 @@ def h_crawl(jc: JobContext) -> dict:
     return res
 
 
+def h_import_comp_crawl(jc: JobContext) -> dict:
+    from .core.competitor_import import import_competitor_crawl
+    from .core.competitor_tree import build_competitor_tree
+
+    db, p = jc.db, jc.job.params
+    comp = db.get(Competitor, p["competitor_id"])
+    up = db.get(Upload, p["upload_id"])
+    if comp is None or up is None:
+        raise ValueError("competitor or upload not found")
+    jc.progress(0, 2, f"Importing {up.filename} for {comp.name}")
+    res = import_competitor_crawl(db, comp, up.stored_path, p.get("mapping") or up.mapping, jc.job.id, bool(p.get("append")))
+    up.status = "IMPORTED"
+    jc.progress(1, 2, "Building competitor taxonomy tree")
+    res["tree"] = build_competitor_tree(db, comp)
+    jc.progress(2, 2, "Done")
+    return res
+
+
 def h_build_comp_tree(jc: JobContext) -> dict:
     from .core.competitor_tree import build_competitor_tree
 
@@ -173,6 +191,7 @@ HANDLERS: dict[str, Callable[[JobContext], dict]] = {
     "COMPARE_TAXONOMY": h_compare,
     "DETECT_GAPS": h_gaps,
     "GENERATE_EXPORT": h_export,
+    "IMPORT_COMPETITOR_CRAWL": h_import_comp_crawl,
 }
 
 

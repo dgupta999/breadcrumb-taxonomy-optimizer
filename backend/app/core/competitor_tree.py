@@ -42,7 +42,9 @@ def _clean(name: str | None) -> str | None:
 def build_competitor_tree(db: Session, competitor: Competitor) -> dict:
     db.execute(delete(CompetitorCategory).where(CompetitorCategory.competitor_id == competitor.id))
     db.flush()
-    pages = [p for p in latest_pages(db, competitor) if p.page_type in TAXONOMY_TYPES]
+    all_pages = latest_pages(db, competitor)
+    pages = [p for p in all_pages if p.page_type in TAXONOMY_TYPES]
+    product_pages = [p for p in all_pages if p.page_type == "PRODUCT" and p.breadcrumb]
     by_url = {p.url: p for p in pages}
     paths: dict[int, tuple[list[str], str]] = {}
 
@@ -100,6 +102,26 @@ def build_competitor_tree(db: Session, competitor: Competitor) -> dict:
             elif not d["url"]:
                 d["url"] = crumb_urls.get(norm_key(labels[i - 1]))
 
+    # Product pages: their breadcrumbs reveal category paths (and inventory per category).
+    product_counts: dict[str, int] = defaultdict(int)
+    for p in product_pages:
+        crumbs = strip_home(p.breadcrumb or [])
+        labels = [c["name"].strip() for c in crumbs if c.get("name")]
+        if labels:
+            last = norm_key(labels[-1])
+            names = {norm_key(p.h1 or ""), norm_key(p.title or "")}
+            if any(n and (n == last or n.startswith(last) or last in n) for n in names) or len(labels[-1]) > 30:
+                labels = labels[:-1]  # last crumb is the product itself
+        if not labels:
+            continue
+        product_counts[path_key(labels)] += 1
+        for i in range(1, len(labels) + 1):
+            pk = path_key(labels[:i])
+            d = drafts.setdefault(pk, {"labels": labels[:i], "page": None, "source": "product breadcrumb", "url": None})
+            crumb = crumbs[i - 1] if i - 1 < len(crumbs) else {}
+            if not d["url"] and crumb.get("url"):
+                d["url"] = crumb["url"]
+
     nodes: dict[str, CompetitorCategory] = {}
     kids: dict[str, list[str]] = defaultdict(list)
     for pk, d in sorted(drafts.items(), key=lambda kv: len(kv[1]["labels"])):
@@ -112,7 +134,7 @@ def build_competitor_tree(db: Session, competitor: Competitor) -> dict:
             parent_id=parent.id if parent else None, parent_name=parent.name if parent else None,
             depth=len(labels) - 1, breadcrumb=join_breadcrumb(labels), path_key=pk,
             hierarchy_source=d["source"] or "breadcrumb ancestor", is_inferred=page is None,
-            product_link_count=page.product_link_count if page else 0,
+            product_link_count=max(page.product_link_count if page else 0, product_counts.get(pk, 0)),
         )
         db.add(cc)
         db.flush()
@@ -125,5 +147,5 @@ def build_competitor_tree(db: Session, competitor: Competitor) -> dict:
     by_source: dict[str, int] = defaultdict(int)
     for cc in nodes.values():
         by_source[cc.hierarchy_source] += 1
-    return {"competitor": competitor.name, "taxonomy_pages": len(pages), "categories": len(nodes),
+    return {"competitor": competitor.name, "taxonomy_pages": len(pages), "product_pages_used": len(product_pages), "categories": len(nodes),
             "max_depth": max((c.depth for c in nodes.values()), default=0), "hierarchy_sources": dict(by_source)}
