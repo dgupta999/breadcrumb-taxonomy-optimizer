@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 
 from ..models import CategoryNode, Synonym
 from .lexicon import GENERIC_MODIFIERS
+from .relations import ACCESSORY_HEADS
 from .normalize import (
     classify_modifier,
     has_cjk,
@@ -51,6 +52,15 @@ class Extraction:
     matched_keys: list[str] = field(default_factory=list)
     alias_exact: Term | None = None
     term_node_ids: set[int] = field(default_factory=set)
+
+    @property
+    def label_key(self) -> str:
+        """The product phrase without brand / spec / generic words: 'asus 筆電充電器 65w' → 筆電充電器."""
+        k = self.key
+        for m in self.modifiers:
+            if self.modifier_types.get(m) in ("BRAND", "SPEC", "GENERIC"):
+                k = k.replace(m, "", 1)
+        return k or self.core_key or self.key
 
     @property
     def only_generic_modifiers(self) -> bool:
@@ -195,6 +205,15 @@ class Vocabulary:
                 ext.canonical_key, ext.canonical_label = self.canonical(ext.core_key), ext.core_label
                 rest = [(0, j), (run_end, n)]
                 ext.modifiers, ext.modifier_types = self._modifiers(key, rest, hard)
+                return ext
+            # Single-character head after a known term: 滑鼠墊 (pad), 手機殼 (case) — the product
+            # is the compound, not the term in front of it.
+            if j < n and key[j] in ACCESSORY_HEADS and (j + 1 == n or (j + 1) in bounds or not is_cjk(key[j + 1])) \
+                    and not any(m[0] <= i and m[1] > j for m in matches):
+                ext.core_key, ext.core_kind = key[i : j + 1], "GUESS"
+                ext.core_label = ext.core_key
+                ext.canonical_key, ext.canonical_label = self.canonical(ext.core_key), ext.core_label
+                ext.modifiers, ext.modifier_types = self._modifiers(key, [(0, i), (j + 1, n)], hard)
                 return ext
             terms = self.terms[sub]
             top = max(terms, key=lambda t: KIND_PRIORITY.get(t.kind, 0))

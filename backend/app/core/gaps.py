@@ -26,6 +26,7 @@ from . import llm
 from .context import EngineContext
 from .lexicon import TEMPORARY_INTENT
 from .normalize import classify_modifier, has_cjk, norm_key, normalize
+from .relations import is_a
 from .srp_mapping import node_en_path
 
 Progress = Callable[[int, int], None]
@@ -70,6 +71,7 @@ class SrpIndex:
         self.srps = srps
         self.ctx = ctx
         self.canon = {s.id: ctx.vocab.canonical(norm_key(s.canonical_concept or s.core_product or s.keyword)) for s in srps}
+        self.ext = {s.id: ctx.vocab.extract(s.keyword) for s in srps}
         self.aliases: dict[str, set[str]] = defaultdict(set)
         for ak, t in ctx.vocab.alias.items():
             self.aliases[t.canonical_key].add(ak)
@@ -85,18 +87,18 @@ class SrpIndex:
             c = self.ctx.vocab.canonical(k)
             keys |= {k, c} | self.aliases.get(c, set()) | self.aliases.get(k, set())
         out: list[tuple[SRP, str]] = []
+        v = self.ctx.vocab
         for s in self.srps:
             sk = s.keyword_norm
+            e = self.ext[s.id]
             if sk in keys:
                 out.append((s, "exact keyword"))
-            elif self.canon.get(s.id) in keys:
-                out.append((s, "synonym / concept"))
-            elif any(len(k) >= 2 and k in sk for k in keys):
-                kind = "brand/spec + product"
-                if s.modifiers and all(not has_cjk(m) for m in s.modifiers):
-                    kind = "brand/spec + product"
-                elif s.modifiers:
-                    kind = "related product term"
+            elif self.canon.get(s.id) in keys or e.label_key in keys:
+                out.append((s, "synonym / same product"))
+            elif any(is_a(x, k, v) for x in {e.label_key, e.core_key} if x for k in keys):
+                # the searched product IS a kind of this category (brand/spec/attribute + product)
+                mods = [m for m in e.modifiers if e.modifier_types.get(m) != "GENERIC"]
+                kind = "subtype (" + ", ".join(mods) + ")" if mods else "same product"
                 out.append((s, kind))
         return out
 
@@ -165,6 +167,12 @@ def detect_gaps(db: Session, ctx: EngineContext, progress: Progress | None = Non
     def draft(key: str, **kw) -> GapDraft:
         if key not in drafts:
             drafts[key] = GapDraft(key=key, **kw)
+        else:
+            # several competitors: keep the most specific placement they agree on
+            # (MOMO 3C ≈ 電腦3C, PChome 電腦/週邊 ≈ 電腦/平板周邊 → 電腦/平板周邊)
+            g, new = drafts[key], kw.get("place_under")
+            if new is not None and g.place_under is not None and idx.is_ancestor(g.place_under, new):
+                g.place_under = new
         return drafts[key]
 
     for cc in sorted(cats.values(), key=lambda c: c.depth):

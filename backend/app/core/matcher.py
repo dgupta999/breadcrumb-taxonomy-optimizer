@@ -23,6 +23,7 @@ from ..models import CategoryNode
 from .concepts import Extraction, Vocabulary
 from .lexicon import BRANCH_CONFLICTS, GENERIC_MODIFIERS, GROUP_SUFFIXES
 from .normalize import char_ngrams, common_suffix_len, jaccard, name_parts, norm_key, normalize, tokens
+from .relations import is_a
 from .taxonomy import TaxonomyIndex
 
 MIN_VALID_SCORE = 45
@@ -189,12 +190,21 @@ class Matcher:
         elif canon and (canon in keys or canon in node_canon or (core and self.vocab.canonical(core) in node_canon)):
             c.add(75, f"canonical concept match '{ext.canonical_label}'")
         if not c.exact:
-            if len(nk) >= 2 and nk in ext.key:
-                c.add(50, f"category term '{node.name_cn}' contained in query")
-            elif ek and len(ek) >= 3 and ek in ext.key:
-                c.add(50, f"category EN term '{node.name_en}' contained in query")
-            if core and len(core) >= 2 and core not in keys and any(core in k for k in keys):
-                c.add(50, f"query product term '{ext.core_label}' contained in category")
+            ql = ext.label_key
+            q_is_a = any(is_a(x, k, self.vocab) for x in {ql, core} if x for k in keys)
+            if not q_is_a and node.name_en and core and core.isascii():
+                # English is head-final too: "type-c hub" is a hub, like "USB Hubs"
+                sing = lambda w: w[:-1] if w.endswith("s") and len(w) > 3 else w  # noqa: E731
+                q_head = sing(normalize(ext.text).split()[-1]) if normalize(ext.text).split() else ""
+                n_words = normalize(node.name_en).split()
+                q_is_a = bool(q_head) and bool(n_words) and q_head == sing(n_words[-1]) and q_head == sing(core)
+            if q_is_a:
+                c.add(50, f"query is a kind of '{node.name_cn}'")
+            elif any(len(k) >= 2 and k in ext.key for k in keys):
+                # 手機殼 / 滑鼠墊: the category word only qualifies another product → accessory-of, not a match
+                c.add(-40, f"'{node.name_cn}' only appears as a qualifier (accessory-of relation, not a kind of it)")
+            if core and len(core) >= 2 and core not in keys and any(is_a(k, core, self.vocab) for k in keys):
+                c.add(20, f"category is a more specific kind of '{ext.core_label}'")
             elif core and nk not in ext.key:
                 # all category terms present but split / reordered: "電競滑鼠 無線" vs 無線滑鼠
                 mods = [norm_key(m) for m in ext.modifiers]
@@ -203,9 +213,9 @@ class Matcher:
                     c.add(80, f"core product '{ext.core_label}' with category qualifier")
                 elif not c.exact:
                     parts = [norm_key(p) for p in name_parts(node.name_cn)]
-                    hit = [p for p in parts if len(p) >= 2 and (p == core or ext.key.endswith(p) or (core or "").endswith(p))]
+                    hit = [p for p in parts if len(p) >= 2 and any(is_a(x, p, self.vocab) for x in {ext.label_key, core} if x)]
                     if hit:
-                        c.add(40, f"category name part '{hit[0]}' contained in query")
+                        c.add(40, f"query is a kind of '{hit[0]}' (part of '{node.name_cn}')")
         shared = {k for k in ext.matched_keys if k in self._node_tokens[node.id] or k in keys}
         shared |= {norm_key(t) for t in tokens(ext.norm) if norm_key(t) in self._node_tokens[node.id]}
         shared -= {ext.key}

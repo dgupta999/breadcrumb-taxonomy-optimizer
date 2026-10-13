@@ -21,6 +21,7 @@ from .audit import AuditContext, relevance
 from .context import EngineContext
 from .matcher import candidate_payload
 from .normalize import norm_key
+from .relations import is_a
 
 Progress = Callable[[int, int], None]
 MATCHED_TYPES = ("EXACT MATCH", "SEMANTIC MATCH", "EXISTING BUT MISPLACED")
@@ -104,7 +105,7 @@ def compare_taxonomy(db: Session, ctx: EngineContext, progress: Progress | None 
                 match_type = "SEMANTIC MATCH"
             elif core_is_node and attrs:
                 match_type = "COMPETITOR MORE SPECIFIC"
-            elif cc.norm_key in nk and cc.norm_key != nk:
+            elif cc.norm_key != nk and is_a(nk, cc.norm_key, ctx.vocab):
                 match_type = "COMPETITOR MORE GENERAL"
             else:
                 match_type = "SEMANTIC MATCH"

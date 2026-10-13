@@ -18,6 +18,7 @@ from .context import EngineContext
 from .lexicon import GENERIC_LEVEL_LABELS, GROUP_LABEL_HINTS
 from .matcher import branch_conflict
 from .normalize import classify_modifier, common_suffix_len, has_cjk, name_parts, norm_key, normalize
+from .relations import ACCESSORY, IS_A, SAME, SIBLING, SUPERTYPE, is_a, relation
 from .srp_mapping import node_en_path
 from .taxonomy import path_key
 
@@ -65,24 +66,35 @@ def relevance(actx: AuditContext, child: CategoryNode, parent: CategoryNode | No
     for pl in actx.placements.get(child.id, []):
         if pl.parent_node_id == parent.id or (pl.parent_name and norm_key(pl.parent_name) == pk):
             return 1.0, f"{pl.competitor} uses the same parent"
-    if pk in ck or ck in pk:
-        return 1.0, "lexical containment"
-    if vocab.canonical(ck) == vocab.canonical(pk):
-        return 1.0, "same concept"
-    cparts = {norm_key(p) for p in name_parts(child.name_cn)} | {ck}
-    pparts = {norm_key(p) for p in name_parts(parent.name_cn)} | {pk}
-    if any(a and b and (a in b or b in a) for a in cparts for b in pparts if len(a) >= 2 and len(b) >= 2):
-        return 0.9, "shared name part"
-    # shared leading product concept (筆電充電器 under 筆電配件)
-    for L in range(min(len(ck), len(pk)), 1, -1):
-        if ck[:L] == pk[:L] and vocab.canonical(ck[:L]) in vocab.terms:
-            return 0.85, f"shared concept '{ck[:L]}'"
-    if common_suffix_len(ck, pk) >= 2:
-        return 0.8, "shared product head"
+    rel = relation(ck, pk, vocab)
+    if rel == IS_A:
+        return 1.0, f"'{child.name_cn}' is a kind of '{parent.name_cn}'"
+    if rel == SAME:
+        return 0.2, "same concept as its parent"
+    if rel == SUPERTYPE:
+        return 0.1, f"parent '{parent.name_cn}' is narrower than '{child.name_cn}'"
+    # compound parent: 網路/分享器 → 無線分享器 is a kind of 分享器
+    for part in name_parts(parent.name_cn):
+        if is_a(ck, part, vocab):
+            return 0.95, f"'{child.name_cn}' is a kind of '{part}'"
+    # accessory group for the same product: 筆電充電器 under 筆電配件
+    if is_group_label(parent.name_cn):
+        for L in range(min(len(ck), len(pk)) - 1, 1, -1):
+            if ck[:L] == pk[:L] and (vocab.canonical(ck[:L]) in vocab.terms or ck[:L] in vocab.terms):
+                return 0.9, f"accessory group for '{ck[:L]}'"
+    # accessory section of the product: 手機 > 手機配件, 筆電 > 筆電周邊
+    if rel == ACCESSORY and ck.startswith(pk) and is_group_label(child.name_cn):
+        return 0.9, f"'{child.name_cn}' is the accessory section of '{parent.name_cn}'"
+    if rel == ACCESSORY:
+        return 0.3, f"'{child.name_cn}' is an accessory of '{parent.name_cn}', not a kind of it"
+    if rel == SIBLING:
+        return 0.3, f"'{child.name_cn}' and '{parent.name_cn}' are sibling types, not parent and child"
     if child.name_en and parent.name_en:
-        ce, pe = normalize(child.name_en).split(), normalize(parent.name_en).split()
-        if ce and pe and ce[-1].rstrip("s") == pe[-1].rstrip("s"):
-            return 0.85, "shared English product head"
+        ce, pe = normalize(child.name_en), normalize(parent.name_en)
+        if ce.endswith(" " + pe) or ce.endswith(" " + pe.rstrip("s")):
+            return 1.0, "English name is a kind of the parent"
+        if ce.split()[-1].rstrip("s") == pe.split()[-1].rstrip("s"):
+            return 0.6, "same English product head"
     if not has_cjk(child.name_cn):
         # Latin brand / model line names (PS5, Nintendo Switch) can't be judged lexically.
         return 0.6, "brand / model line name"

@@ -15,7 +15,8 @@ from ..models import (
 from .context import EngineContext
 from .gaps import SrpIndex
 from .matcher import group_profile
-from .normalize import norm_key
+from .normalize import name_parts, norm_key
+from .relations import is_a
 from .srp_mapping import node_en_path
 
 PRESENT_TYPES = {"EXACT MATCH": "PRESENT", "SEMANTIC MATCH": "PRESENT", "EXISTING BUT MISPLACED": "PRESENT (MISPLACED)",
@@ -41,13 +42,18 @@ class FocusMatcher:
         self.keys = {x for x in keys if x}
         self.group, self.stems, _ = group_profile(term, v)
 
-    def label(self, label: str) -> bool:
+    def label(self, label: str, parts: bool = False) -> bool:
+        """`parts=True` also accepts compound group names containing the category
+        (顯示卡/主機板 for 顯示卡) — used for the node itself, not for its descendants."""
+        if parts and any(self.label(p) for p in name_parts(label)):
+            return True
         k = norm_key(label)
         if not k:
             return False
         if k in self.keys or (self.ctx.vocab.canonical(k) in self.keys):
             return True
-        if any(len(x) >= 2 and x in k for x in self.keys):
+        # 電競滑鼠 is a kind of 滑鼠 → in focus; 滑鼠墊 (mouse pad) is not
+        if any(is_a(k, x, self.ctx.vocab) for x in self.keys):
             return True
         if self.group and self.stems:
             g, stems, _ = group_profile(label, self.ctx.vocab)
@@ -73,7 +79,7 @@ def category_focus(db: Session, ctx: EngineContext, term: str, competitor_ids: l
     # Coupang side: matching nodes + their descendants
     focus_nodes: dict[int, CategoryNode] = {}
     for n in idx.real_nodes():
-        if fm.label(n.name_cn) or (n.name_en and fm.label(n.name_en)):
+        if fm.label(n.name_cn, parts=True) or (n.name_en and fm.label(n.name_en)):
             focus_nodes[n.id] = n
             for d in idx.descendants(n):
                 focus_nodes[d.id] = d
@@ -128,7 +134,7 @@ def category_focus(db: Session, ctx: EngineContext, term: str, competitor_ids: l
     unmapped = 0
     for cc in sorted(cats.values(), key=lambda c: (c.competitor_id, c.breadcrumb)):
         m = maps.get(cc.id)
-        in_focus = fm.path(labels_of(cc)) or (m is not None and m.matched_node_id in focus_nodes)
+        in_focus = fm.path(labels_of(cc)) or fm.label(cc.name, parts=True) or (m is not None and m.matched_node_id in focus_nodes)
         if not in_focus:
             continue
         if m is None:

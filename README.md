@@ -103,6 +103,22 @@ Recommended order: upload → map SRPs → audit → add competitors and crawl �
 
 ## How the engine decides
 
+**Entity relations come first.** A mapping or a parent-child placement is made only when there is a real **is-a** relation. Product names are head-final, in both Chinese and English: the last part names the product.
+
+| Pair | Relation | Effect |
+|---|---|---|
+| 無線滑鼠 → 滑鼠, 筆電充電器 → 充電器, type-c hub → USB Hubs | is-a | Match; valid child of the parent |
+| 滑鼠墊 (mouse pad) → 滑鼠, 手機殼 (phone case) → 手機 | accessory-of | Never mapped to it (−40); not demand evidence for it |
+| 無線滑鼠 vs 電競滑鼠 | siblings | Not parent and child |
+| 筆電充電器 under 筆電配件, 手機配件 under 手機 | accessory section | Valid placement |
+
+This rule also drives:
+- **SRP demand:** an SRP counts for a category only if what it searches for *is a kind of* that category.
+- **Category Focus:** only categories that are kinds of the searched category, or that sit below it in the competitor's breadcrumb, are included.
+- **The breadcrumb audit:** a child that isn't a kind of its parent is flagged.
+
+The logic lives in `backend/app/core/relations.py`.
+
 **Normalization.** NFKC normalization (full-width → half-width), lowercase, unified hyphens, `128 gb → 128gb`, `Wi Fi → wifi`, `micro sd → microsd`, and variant characters (`週邊 → 周邊`). The original keyword is kept for display.
 
 **Core product extraction.** Uses a vocabulary built from category names, name parts (`網路/分享器` → `網路`, `分享器`), latin tokens, head suffixes and synonyms. The longest match that ends a segment wins (`ASUS 筆電充電器` → `筆電充電器`). Chinese is head-final, so `筆電支架` → core `支架`, modifier `筆電`. Modifiers are classified as brand, spec, attribute or generic.

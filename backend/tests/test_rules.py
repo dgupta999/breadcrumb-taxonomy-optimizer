@@ -184,3 +184,45 @@ def test_human_mapping_overrides_future_runs(env):
     db.commit()
     s = srp(db, "wifi分享器")
     assert s.matched_node_id == target.id and s.match_method == "HUMAN" and s.review_status == "APPROVED"
+
+
+# ---------------------------------------------------------------- entity relations (is-a vs accessory-of)
+from app.core.relations import ACCESSORY, IS_A, SIBLING, relation  # noqa: E402
+
+
+@pytest.mark.parametrize("child,parent,rel", [
+    ("無線滑鼠", "滑鼠", IS_A),
+    ("電競螢幕", "螢幕", IS_A),
+    ("筆電充電器", "充電器", IS_A),
+    ("滑鼠墊", "滑鼠", ACCESSORY),
+    ("手機殼", "手機", ACCESSORY),
+    ("無線滑鼠", "電競滑鼠", SIBLING),
+])
+def test_relation(child, parent, rel):
+    assert relation(child, parent) == rel
+
+
+def test_accessory_not_mapped_to_its_product(env):
+    db, p = env
+    m = load_context(db, p).matcher
+    for kw, wrong in (("滑鼠墊", "滑鼠"), ("手機殼", "手機"), ("記憶卡盒", "記憶卡")):
+        r = m.match(kw)
+        assert r.top is None or r.top.node.name_cn != wrong, (kw, r.top.node.name_cn if r.top else None)
+
+
+def test_subtype_still_mapped_to_parent(env):
+    db, p = env
+    m = load_context(db, p).matcher
+    assert m.match("電競滑鼠").top.node.name_cn == "滑鼠"
+    assert m.match("羅技 無線滑鼠").top.node.name_cn == "無線滑鼠"
+
+
+def test_srp_support_uses_is_a(env):
+    from app.core.gaps import SrpIndex
+
+    db, p = env
+    ctx = load_context(db, p)
+    sidx = SrpIndex(db.query(SRP).all() + [SRP(id=-1, keyword="滑鼠墊", keyword_norm="滑鼠墊", modifiers=[])], ctx)
+    kws = {s.keyword for s, _ in sidx.support(["滑鼠"])}
+    assert {"羅技滑鼠", "電競滑鼠", "無線滑鼠"} <= kws
+    assert "滑鼠墊" not in kws
