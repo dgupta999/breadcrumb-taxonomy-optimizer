@@ -91,9 +91,9 @@ def dashboard(p: Project = Depends(get_project), db: Session = Depends(get_db)):
         crawl.append({"competitor": c.name, "status": cj.status if cj else "NOT CRAWLED", "processed": cj.processed_urls if cj else 0,
                       "discovered": cj.discovered_urls if cj else 0, "errors": cj.error_count if cj else 0, "categories": cats})
     jobs = db.scalars(select(JobRun).where(JobRun.project_id == pid).order_by(JobRun.id.desc()).limit(10)).all()
-    last_by_type = {}
-    for j in db.scalars(select(JobRun).where(JobRun.project_id == pid).order_by(JobRun.id.desc())):
-        last_by_type.setdefault(j.job_type, {"status": j.status, "completed_at": j.completed_at.isoformat() if j.completed_at else None, "id": j.id})
+    last_ids = db.execute(select(func.max(JobRun.id)).where(JobRun.project_id == pid).group_by(JobRun.job_type)).scalars().all()
+    last_by_type = {j.job_type: {"status": j.status, "completed_at": j.completed_at.isoformat() if j.completed_at else None, "id": j.id}
+                    for j in db.scalars(select(JobRun).where(JobRun.id.in_(last_ids or [-1])))}
     steps = [
         ("Upload Current Category Taxonomy", n_nodes > 0, "upload"),
         ("Upload SRP Data", n_srps > 0, "upload"),
@@ -649,6 +649,15 @@ def review_queue(entity_type: str | None = None, limit: int = Query(200, le=2000
                           "confidence": m.confidence, "current": cc.breadcrumb if cc else None, "recommended": n.breadcrumb_cn if n else None,
                           "reason": m.reason, "kind": m.match_type})
     return {"items": items, "total": len(items)}
+
+
+@router.get("/projects/{project_id}/review-count")
+def review_count(p: Project = Depends(get_project), db: Session = Depends(get_db)):
+    pid = p.id
+    n = (db.scalar(select(func.count()).where(SRP.project_id == pid, SRP.review_status.in_(("NEEDS_REVIEW", "LOW_CONFIDENCE", "NO_MATCH")))) or 0) \
+        + (db.scalar(select(func.count()).where(BreadcrumbAudit.project_id == pid, BreadcrumbAudit.review_status == "NEEDS_REVIEW")) or 0) \
+        + (db.scalar(select(func.count()).where(TaxonomyGap.project_id == pid, TaxonomyGap.review_status == "NEEDS_REVIEW")) or 0)
+    return {"total": n}
 
 
 @router.get("/projects/{project_id}/approved-rules")

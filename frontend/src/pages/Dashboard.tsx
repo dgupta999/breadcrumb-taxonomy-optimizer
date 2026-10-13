@@ -51,7 +51,7 @@ export default function Dashboard() {
     queryKey: ["dashboard", projectId],
     queryFn: () => api.get<Dash>(`/projects/${projectId}/dashboard`),
     enabled: !!projectId,
-    refetchInterval: 5000,
+    refetchInterval: (q) => (q.state.data?.recent_jobs?.some((j) => ["QUEUED", "RUNNING"].includes(j.status)) ? 5000 : 60000),
   });
   return (
     <NeedProject>

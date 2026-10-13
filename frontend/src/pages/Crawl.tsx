@@ -33,7 +33,7 @@ export default function CrawlPageView() {
     queryKey: ["crawl-pages", projectId, compFilter, types, q, offset],
     queryFn: () => api.get<Paged<CrawlPage>>(`/projects/${projectId}/crawl-pages`, { competitor_id: compFilter || undefined, page_type: types, q, offset, limit: 100 }),
     enabled: !!projectId,
-    refetchInterval: 4000,
+    refetchInterval: (q) => (comps.data?.some((c) => ["QUEUED", "RUNNING"].includes(c.last_job?.status || "")) ? 4000 : false),
   });
 
   const add = async () => {

@@ -32,9 +32,9 @@ export default function Layout() {
   const { data: health } = useQuery({ queryKey: ["health"], queryFn: () => api.get<{ llm_available: boolean; database: string }>("/health"), staleTime: 60000 });
   const { data: queue } = useQuery({
     queryKey: ["review-count", projectId],
-    queryFn: () => api.get<{ total: number }>(`/projects/${projectId}/review-queue`, { limit: 2000 }),
+    queryFn: () => api.get<{ total: number }>(`/projects/${projectId}/review-count`),
     enabled: !!projectId,
-    staleTime: 15000,
+    staleTime: 60000,
   });
   return (
     <div className="flex min-h-screen">

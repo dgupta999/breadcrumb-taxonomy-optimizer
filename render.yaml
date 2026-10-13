@@ -3,6 +3,7 @@ services:
   - type: web
     name: breadcrumb-taxonomy-optimizer
     runtime: docker
+    region: singapore        # keep next to the Supabase database (ap-southeast-1)
     plan: free               # sleeps after 15 min idle, 512 MB RAM. Upgrade to "starter" for always-on + JS-rendered crawls
     healthCheckPath: /api/health
     autoDeploy: true
