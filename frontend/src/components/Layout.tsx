@@ -15,7 +15,7 @@ const NAV = [
   { to: "/upload", label: "Upload Taxonomy", icon: Upload },
   { to: "/srp", label: "SRP Mapping", icon: Route },
   { to: "/audit", label: "Breadcrumb Audit", icon: ScanSearch },
-  { to: "/crawl", label: "Competitor Crawl", icon: Network },
+  { to: "/crawl", label: "Competitors (CSV)", icon: Network },
   { to: "/competitor-taxonomy", label: "Competitor Taxonomy", icon: ListTree },
   { to: "/competitor-mapping", label: "Competitor Mapping", icon: GitCompare },
   { to: "/gaps", label: "Taxonomy Gaps", icon: Boxes },

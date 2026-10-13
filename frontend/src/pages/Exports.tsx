@@ -5,6 +5,7 @@ import { ExportButtons, NeedProject } from "@/components/common";
 import { Card, PageHeader } from "@/components/ui";
 
 const DESC: Record<string, string> = {
+  competitor_gap_pages: "The competitor gap report: every new page to create (or existing page to move), where it falls in Coupang's hierarchy (CN/EN breadcrumb), competitor evidence and SRP demand.",
   current_taxonomy_tree: "Parsed hierarchy of your current categories + indented tree view.",
   breadcrumb_audit: "Every category: issues, action, recommended breadcrumb, quality score breakdown, linking impact.",
   srp_breadcrumb_mapping: "Every SRP with core product, matched category, CN/EN breadcrumb, confidence, duplicate intent.",

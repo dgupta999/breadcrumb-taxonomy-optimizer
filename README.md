@@ -78,7 +78,10 @@ Deploy the backend (Docker, Fly, Render, a VM, etc.) with `uvicorn app.main:app`
 ## Recommended workflow: your own crawl files + Category Focus
 
 1. **Upload Taxonomy**: upload the Coupang taxonomy and the SRP file.
-2. **Competitor Crawl**: add MOMO and PChome (name and any start URL). Then upload each competitor's crawl export (CSV or XLSX from Screaming Frog or similar) with **URL + Breadcrumb**. Breadcrumbs can be one `A > B > C` column or numbered `Breadcrumb 1..N` columns. Product pages are fine. The competitor tree, comparison and gap detection run automatically after import.
+2. **Competitors (CSV)**: type the competitor name (e.g. MOMO) and upload its crawl CSV with **URL + Breadcrumb**. No start URL or server crawling is needed. Breadcrumbs can be one `A > B > C` column or numbered `Breadcrumb 1..N` columns, and product pages are fine.
+   - The comparison with Coupang and gap detection run automatically.
+   - The same page shows the **gap report**: every new page to create, or existing page to move, with its Chinese and English breadcrumb in Coupang's hierarchy. A new parent is listed directly above its children.
+   - **Download gaps** gives `Competitor Gaps - New Pages.csv` / `.xlsx`.
 3. **Category Focus**: type a category (e.g. `滑鼠`, `網路設備`, `mouse`). You get every competitor category and URL in it, its breadcrumb, whether Coupang has it, and where each missing one fits (CN and EN breadcrumb, gap type, SRP demand). Click **XLSX** or **CSV** to download.
 
 Sample files: `sample_data/momo_crawl_sample.csv`, `sample_data/pchome_crawl_sample.xlsx`.

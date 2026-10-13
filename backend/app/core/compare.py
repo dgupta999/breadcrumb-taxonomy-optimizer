@@ -96,7 +96,7 @@ def compare_taxonomy(db: Session, ctx: EngineContext, progress: Progress | None 
             exact_name = cc.norm_key == nk or (node.name_en and cc.norm_key == norm_key(node.name_en))
             attrs = ext.attribute_modifiers
             core_is_node = ext.core_key in (nk, norm_key(node.name_en or "")) or ctx.vocab.canonical(ext.core_key) == ctx.vocab.canonical(nk)
-            group_eq = any(sig.startswith("equivalent group category") for sig in top.signals)
+            group_eq = any(sig.startswith(("equivalent group category", "short form of group")) for sig in top.signals)
             if res.ambiguous and method == "RULE" and conf < 70:
                 match_type = "AMBIGUOUS"
             elif exact_name:

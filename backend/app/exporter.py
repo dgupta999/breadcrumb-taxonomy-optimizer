@@ -430,7 +430,61 @@ def focus_sheets(res: dict) -> list[Sheet]:
     ]
 
 
+def competitor_gap_pages(db: Session, pid: int) -> list[Sheet]:
+    """The competitor gap report: every suggested NEW page (and every MOVE of an existing
+    page) with where it falls in the current Coupang hierarchy."""
+    gaps, children = _gaps(db, pid)
+    types = ("MISSING PARENT", "BOTH MISSING", "MISSING CHILD", "MISPLACED EXISTING CATEGORY")
+    gaps = [g for g in gaps if g.gap_type in types and g.review_status != "REJECTED"]
+    cols = ["Priority", "Gap Type", "Page Level", "New / Changed Page CN", "New / Changed Page EN", "Page Status",
+            "Falls Under (Coupang Parent)", "Parent Status", "Suggested Breadcrumb CN", "Suggested Breadcrumb EN",
+            "Existing Coupang URL", "Current Coupang Breadcrumb", "Competitors", "Competitor Breadcrumbs", "Competitor URLs",
+            "Supporting SRPs", "Search Volume", "Recommended Action", "Reason", "Confidence", "Review Status"]
+    order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+    rows: list[list] = []
+
+    def evidence(g):
+        ev = g.competitor_evidence or {}
+        crumbs = [f"{c}: {e['breadcrumb']}" for c, lst in ev.items() for e in lst]
+        urls = [e["url"] for lst in ev.values() for e in lst if e.get("url")]
+        return ", ".join(ev.keys()), "; ".join(dict.fromkeys(crumbs)), "; ".join(dict.fromkeys(urls))
+
+    def parent_of(path: str | None) -> str | None:
+        parts = (path or "").split(" > ")
+        return parts[-2] if len(parts) >= 2 else None
+
+    for g in sorted(gaps, key=lambda g: (order.get(g.priority, 3), g.suggested_breadcrumb_cn or "")):
+        comps, crumbs, urls = evidence(g)
+        srps = _j([f"{s['keyword']} ({s.get('search_volume') or 0})" for s in (g.supporting_srps or [])[:15]])
+        common = [comps, crumbs, urls]
+        if g.gap_type in ("MISSING PARENT", "BOTH MISSING"):
+            rows.append([g.priority, g.gap_type, "Parent", g.parent_name_cn, g.parent_name_en, "NEW",
+                         parent_of(g.suggested_breadcrumb_cn), "EXISTING", g.suggested_breadcrumb_cn, g.suggested_breadcrumb_en,
+                         None, None, *common, srps, g.combined_search_volume,
+                         f"Create '{g.parent_name_cn}'" + (" and reconnect the existing children below" if g.gap_type == "MISSING PARENT" else ""),
+                         g.reason, g.confidence, g.review_status])
+            for c in children[g.id]:
+                existing = c.status == "EXISTING"
+                rows.append([g.priority, g.gap_type, "Child", c.name_cn, c.name_en, "EXISTING → MOVE" if existing else "NEW",
+                             g.parent_name_cn, "NEW", c.suggested_breadcrumb_cn, c.suggested_breadcrumb_en,
+                             c.existing_url, c.existing_breadcrumb, *common,
+                             _j([f"{s['keyword']} ({s.get('search_volume') or 0})" for s in (c.supporting_srps or [])[:10]]), c.search_volume,
+                             f"Move under new parent '{g.parent_name_cn}'" if existing else f"Create '{c.name_cn}' under '{g.parent_name_cn}'",
+                             g.reason, g.confidence, g.review_status])
+        elif g.gap_type == "MISSING CHILD":
+            rows.append([g.priority, g.gap_type, "Child", g.main_name_cn, g.main_name_en, "NEW",
+                         g.parent_name_cn, g.parent_status, g.suggested_breadcrumb_cn, g.suggested_breadcrumb_en,
+                         None, None, *common, srps, g.combined_search_volume, g.recommended_action, g.reason, g.confidence, g.review_status])
+        else:  # misplaced existing page → move, never a duplicate page
+            rows.append([g.priority, g.gap_type, "Existing page", g.main_name_cn, g.main_name_en, "EXISTING → MOVE",
+                         g.parent_name_cn, "EXISTING", g.suggested_breadcrumb_cn, g.suggested_breadcrumb_en,
+                         g.existing_url, g.current_breadcrumb_cn, *common, srps, g.combined_search_volume,
+                         "MOVE (do not create a duplicate page)", g.reason, g.confidence, g.review_status])
+    return [Sheet("Competitor Gaps - New Pages", cols, rows)]
+
+
 EXPORTS: dict[str, tuple[str, Callable[[Session, int], list[Sheet]]]] = {
+    "competitor_gap_pages": ("Competitor Gaps - New Pages", competitor_gap_pages),
     "current_taxonomy_tree": ("Current Taxonomy Tree", taxonomy_tree),
     "breadcrumb_audit": ("Breadcrumb Audit", breadcrumb_audit),
     "srp_breadcrumb_mapping": ("SRP Breadcrumb Mapping", srp_mapping),

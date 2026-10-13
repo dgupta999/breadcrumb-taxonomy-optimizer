@@ -24,7 +24,7 @@ The deploy produces one public URL, for example `https://breadcrumb-taxonomy-opt
    - `DATABASE_URL`: the Supabase URI from step 1.
    - `API_TOKEN`: the team password you will share with colleagues. Make it long.
    - `OPENAI_API_KEY`: optional. Leave it empty to run on rules only. (`ANTHROPIC_API_KEY` also works.)
-3. Click **Apply**. The first Docker build takes 5–10 minutes because it installs Chromium for the crawler.
+3. Click **Apply**. The first Docker build takes about 3–5 minutes.
 4. When the service is live, open its `onrender.com` URL and sign in with the team password.
 
 Share the URL and the password with your team; send the password separately.

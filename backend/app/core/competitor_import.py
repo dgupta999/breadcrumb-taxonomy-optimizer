@@ -94,6 +94,11 @@ def import_competitor_crawl(db: Session, competitor: Competitor, path: str, mapp
         )
         db.add(page)
         counts[ptype] = counts.get(ptype, 0) + 1
+    if seen and (not competitor.start_url or competitor.start_url.startswith("(")):
+        from urllib.parse import urlsplit
+
+        u = urlsplit(sorted(seen)[0])
+        competitor.start_url = f"{u.scheme}://{u.netloc}/"
     cj.processed_urls = cj.discovered_urls = len(seen)
     cj.status = "COMPLETED"
     competitor.status = "IMPORTED"

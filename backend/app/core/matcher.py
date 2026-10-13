@@ -232,7 +232,11 @@ class Matcher:
         # Group / section categories: 網路設備 ≈ 網路/分享器, 儲存設備 ≈ 儲存裝置, 筆電配件 ≠ 電腦配件
         q_group, q_stems, q_sufs = group_profile(ext.text, self.vocab)
         n_group, n_stems, n_sufs = self._group[node.id]
-        if q_group and n_group and q_stems and n_stems and not c.exact:
+        if not q_group and n_group and not c.exact and (ext.key in n_stems or self.vocab.canonical(ext.key) in n_stems):
+            # bare short form of a group: 儲存 = 儲存裝置, 網路 = 網路設備
+            c.add(70, f"short form of group category '{node.name_cn}'")
+            c.add(20, "same group type")
+        elif q_group and n_group and q_stems and n_stems and not c.exact:
             if q_stems & n_stems:
                 c.add(70, f"equivalent group category (concept {sorted(q_stems & n_stems)[0]})")
                 if q_sufs & n_sufs:

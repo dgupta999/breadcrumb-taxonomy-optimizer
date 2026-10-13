@@ -9,12 +9,12 @@ RUN npm run build
 # ---------- 2. Python API + worker + crawler ----------
 FROM python:3.12-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
-    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright DATA_DIR=/app/backend/data
+    DATA_DIR=/app/backend/data
 WORKDIR /app/backend
 COPY backend/requirements.txt ./
-RUN pip install -r requirements.txt \
- && python -m playwright install --with-deps chromium \
- && rm -rf /var/lib/apt/lists/*
+# Competitor data comes from uploaded CSVs, so no headless browser is installed
+# (keeps the image small for Render's free plan).
+RUN pip install -r requirements.txt
 COPY backend/app ./app
 COPY sample_data /app/sample_data
 COPY --from=web /web/dist /app/frontend/dist

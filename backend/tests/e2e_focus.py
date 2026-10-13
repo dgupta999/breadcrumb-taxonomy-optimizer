@@ -37,8 +37,7 @@ upload(pid, "TAXONOMY", "current_taxonomy.xlsx")
 upload(pid, "SRP", "srp_data.csv", then=[{"job_type": "MAP_SRP"}])
 idle(pid)
 for name, url, f in (("MOMO", "https://www.momoshop.com.tw/", "momo_crawl_sample.csv"), ("PChome", "https://24h.pchome.com.tw/", "pchome_crawl_sample.xlsx")):
-    comp = c.post(f"/projects/{pid}/competitors", json={"name": name, "start_url": url}).json()
-    up = upload(pid, "COMPETITOR_CRAWL", f, competitor_id=comp["id"])
+    up = upload(pid, "COMPETITOR_CRAWL", f, competitor_name=name)  # competitor created from the name
     print(name, "mapping:", {k: v for k, v in up["mapping"].items() if v})
     idle(pid)
 jobs = idle(pid)
@@ -56,3 +55,15 @@ for term in ("滑鼠", "網路設備", "筆電配件", "顯示卡", "mouse"):
 r = c.get(f"/projects/{pid}/category-focus", params={"category": "滑鼠", "format": "xlsx"})
 assert r.status_code == 200 and r.content[:2] == b"PK"
 print("\nxlsx export ok", len(r.content), "bytes")
+
+r = c.get(f"/projects/{pid}/exports/competitor_gap_pages", params={"format": "csv"})
+assert r.status_code == 200
+print("--- Competitor Gaps - New Pages.csv ---")
+import csv, io
+rows = list(csv.reader(io.StringIO(r.content.decode("utf-8-sig"))))
+h = rows[0]
+for row in rows[1:]:
+    d = dict(zip(h, row))
+    print(f"{d['Priority']:6} {d['Gap Type']:28} {d['Page Level']:13} {d['New / Changed Page CN']:10} {d['Page Status']:16} {d['Suggested Breadcrumb CN']}  [{d['Competitors']}] vol={d['Search Volume']}")
+comps = c.get(f"/projects/{pid}/competitors").json()
+print("competitors:", [(x["name"], x["start_url"]) for x in comps])

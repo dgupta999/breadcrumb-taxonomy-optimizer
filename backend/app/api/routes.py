@@ -179,7 +179,8 @@ class CommitIn(BaseModel):
     mapping: dict[str, str | None]
     replace: bool = True
     then: list = Field(default_factory=list)
-    competitor_id: int | None = None  # COMPETITOR_CRAWL uploads
+    competitor_id: int | None = None  # COMPETITOR_CRAWL uploads: existing competitor…
+    competitor_name: str | None = None  # …or a name (created if new)
     append: bool = False
 
 
@@ -201,8 +202,15 @@ def commit_upload(upload_id: int, body: CommitIn, p: Project = Depends(get_proje
         return {"imported": res}
     if up.kind == "COMPETITOR_CRAWL":
         comp = db.get(Competitor, body.competitor_id) if body.competitor_id else None
+        if comp is None and body.competitor_name and body.competitor_name.strip():
+            name = body.competitor_name.strip()
+            comp = db.scalars(select(Competitor).where(Competitor.project_id == p.id, func.lower(Competitor.name) == name.lower())).first()
+            if comp is None:
+                comp = Competitor(project_id=p.id, name=name, start_url="(uploaded CSV)", status="NEW")
+                db.add(comp)
+                db.flush()
         if comp is None or comp.project_id != p.id:
-            raise HTTPException(400, "Choose which competitor this crawl file belongs to")
+            raise HTTPException(400, "Enter the competitor name for this file")
         then = body.then or [{"job_type": "COMPARE_TAXONOMY"}, {"job_type": "DETECT_GAPS"}]
         job = enqueue(db, p.id, "IMPORT_COMPETITOR_CRAWL", {"upload_id": up.id, "mapping": body.mapping, "competitor_id": comp.id,
                                                             "append": body.append, "then": then})
