@@ -3,7 +3,7 @@ services:
   - type: web
     name: breadcrumb-taxonomy-optimizer
     runtime: docker
-    plan: starter            # free plan sleeps & has 512 MB; crawls with Chromium need starter or above
+    plan: free               # sleeps after 15 min idle, 512 MB RAM. Upgrade to "starter" for always-on + JS-rendered crawls
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
@@ -16,7 +16,7 @@ services:
       - key: EMBEDDED_WORKER
         value: "true"
       - key: WORKER_THREADS
-        value: "3"
+        value: "2"
       - key: LLM_MODEL
         value: claude-opus-5-5
       - key: CORS_ORIGINS
