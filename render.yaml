@@ -1,0 +1,23 @@
+# Render Blueprint — New → Blueprint → pick this repo.
+services:
+  - type: web
+    name: breadcrumb-taxonomy-optimizer
+    runtime: docker
+    plan: starter            # free plan sleeps & has 512 MB; crawls with Chromium need starter or above
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL     # Supabase → Connect → Session pooler URI, with postgresql+psycopg:// prefix
+        sync: false
+      - key: API_TOKEN        # the team password people type on the login screen
+        sync: false
+      - key: ANTHROPIC_API_KEY  # optional — enables the LLM fallback
+        sync: false
+      - key: EMBEDDED_WORKER
+        value: "true"
+      - key: WORKER_THREADS
+        value: "3"
+      - key: LLM_MODEL
+        value: claude-opus-5-5
+      - key: CORS_ORIGINS
+        value: "*"

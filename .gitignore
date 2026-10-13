@@ -1,0 +1,11 @@
+backend/.venv/
+backend/data/
+backend/.env
+backend/tests/fixtures/sites/
+**/__pycache__/
+.pytest_cache/
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+e2e_exports/
+frontend/*.tsbuildinfo
