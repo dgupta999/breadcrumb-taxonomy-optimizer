@@ -71,9 +71,17 @@ def _sense(text_norm: str, head: str, exclude: set[str] | None = None) -> str | 
     return winners[0] if len(winners) == 1 else None
 
 
+_NODE_CTX: dict[tuple[int, str], str] = {}
+
+
 def branch_conflict(query_norm: str, node: CategoryNode) -> str | None:
     """Return an explanation if the query and the candidate sit in clearly different senses."""
-    node_ctx = normalize(f"{node.breadcrumb_cn} {node.breadcrumb_en or ''}")
+    if not any(h in query_norm for h in BRANCH_CONFLICTS):
+        return None
+    ck = (node.id, node.breadcrumb_cn)
+    node_ctx = _NODE_CTX.get(ck)
+    if node_ctx is None:
+        node_ctx = _NODE_CTX[ck] = normalize(f"{node.breadcrumb_cn} {node.breadcrumb_en or ''}")
     for head in BRANCH_CONFLICTS:
         if head not in query_norm:
             continue
@@ -128,6 +136,14 @@ class Matcher:
             toks |= {norm_key(p) for p in n.name_cn.replace("/", " ").split()}
             self._node_tokens[n.id] = {t for t in toks if t and t not in GENERIC_MODIFIERS}
         self._group = {n.id: group_profile(n.name_cn, vocab) for n in self.nodes}
+        # plain per-node facts (avoid ORM attribute overhead in the hot loop)
+        self._facts: dict[int, tuple] = {}
+        for n in self.nodes:
+            ek = norm_key(n.name_en) if n.name_en else ""
+            keys = {k for k in (n.norm_key, ek) if k}
+            parent = index.nodes.get(n.parent_id) if n.parent_id else None
+            self._facts[n.id] = (n.norm_key, ek, keys, {vocab.canonical(k) for k in keys}, n.depth,
+                                 parent is not None and parent.norm_key == n.norm_key)
         self._by_stem: dict[str, set[int]] = defaultdict(set)
         for nid, (is_group, stems, _) in self._group.items():
             if is_group:
@@ -170,10 +186,10 @@ class Matcher:
     # ------------------------------------------------------------------ scoring
     def _score(self, node: CategoryNode, ext: Extraction) -> Candidate:
         c = Candidate(node)
-        nk = node.norm_key
-        ek = norm_key(node.name_en) if node.name_en else ""
-        keys = {k for k in (nk, ek) if k}
-        node_canon = {self.vocab.canonical(k) for k in keys}
+        qprof = ext.__dict__.get("_group_profile")
+        if qprof is None:
+            qprof = ext.__dict__["_group_profile"] = group_profile(ext.text, self.vocab)
+        nk, ek, keys, node_canon, depth, dup_level = self._facts[node.id]
         core = ext.core_key
         canon = ext.canonical_key
 
@@ -230,7 +246,7 @@ class Matcher:
         if sem >= 1:
             c.add(round(sem), "semantic similarity")
         # Group / section categories: 網路設備 ≈ 網路/分享器, 儲存設備 ≈ 儲存裝置, 筆電配件 ≠ 電腦配件
-        q_group, q_stems, q_sufs = group_profile(ext.text, self.vocab)
+        q_group, q_stems, q_sufs = qprof
         n_group, n_stems, n_sufs = self._group[node.id]
         if not q_group and n_group and not c.exact and (ext.key in n_stems or self.vocab.canonical(ext.key) in n_stems):
             # bare short form of a group: 儲存 = 儲存裝置, 網路 = 網路設備
@@ -246,9 +262,8 @@ class Matcher:
                 c.add(-30, "different group concept")
                 c.conflict = True
         if c.relevance > 0:
-            c.add(2 * node.depth, f"depth {node.depth} specificity", relevance=False)
-            parent = self.index.nodes.get(node.parent_id) if node.parent_id else None
-            if parent is not None and parent.norm_key == nk:
+            c.add(2 * depth, f"depth {depth} specificity", relevance=False)
+            if dup_level:
                 c.add(-15, "duplicate-level page (parent has the same name)", relevance=False)
         why = branch_conflict(ext.norm, node)
         if why:

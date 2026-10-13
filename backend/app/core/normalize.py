@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from functools import lru_cache
 
 # Breadcrumb separators seen in uploads and on competitor sites.
 BREADCRUMB_SPLIT_RE = re.compile(r"\s*(?:>|＞|›|»|→|\s/\s|\s\|\s)\s*")
@@ -30,7 +31,18 @@ def has_cjk(text: str) -> bool:
     return bool(_CJK_RE.search(text or ""))
 
 
+@lru_cache(maxsize=500_000)
+def _normalize_cached(text: str) -> str:
+    return _normalize(text)
+
+
 def normalize(text: str | None) -> str:
+    if not text:
+        return ""
+    return _normalize_cached(str(text))
+
+
+def _normalize(text: str | None) -> str:
     """Human-readable normalized form: NFKC (full→half width), lowercase,
     unified dashes, joined storage units, single spaces."""
     if not text:
@@ -51,10 +63,19 @@ def normalize(text: str | None) -> str:
     return t
 
 
+_KEY_STRIP = re.compile(r"[\s\-/.&+]")
+
+
+@lru_cache(maxsize=500_000)
+def _norm_key_cached(text: str) -> str:
+    return _KEY_STRIP.sub("", _normalize_cached(text))
+
+
 def norm_key(text: str | None) -> str:
     """Comparison key: normalized with all spaces, hyphens and joiners removed."""
-    t = normalize(text)
-    return re.sub(r"[\s\-/.&+]", "", t)
+    if not text:
+        return ""
+    return _norm_key_cached(str(text))
 
 
 def split_breadcrumb(text: str | None) -> list[str]:

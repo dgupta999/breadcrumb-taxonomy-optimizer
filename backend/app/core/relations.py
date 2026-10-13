@@ -36,6 +36,17 @@ def _ends_with(x: str, y: str) -> bool:
 
 def is_a(child: str, parent: str, vocab=None) -> bool:
     """True when `child` is the same concept as, or a kind of, `parent`."""
+    if vocab is not None:
+        cache = vocab.__dict__.setdefault("_isa_cache", {})
+        k = (child, parent)
+        hit = cache.get(k)
+        if hit is None:
+            hit = cache[k] = _is_a(child, parent, vocab)
+        return hit
+    return _is_a(child, parent, vocab)
+
+
+def _is_a(child: str, parent: str, vocab=None) -> bool:
     c, p = norm_key(child), norm_key(parent)
     if not c or not p:
         return False

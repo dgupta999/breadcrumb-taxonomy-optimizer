@@ -98,11 +98,17 @@ def relevance(actx: AuditContext, child: CategoryNode, parent: CategoryNode | No
     if not has_cjk(child.name_cn):
         # Latin brand / model line names (PS5, Nintendo Switch) can't be judged lexically.
         return 0.6, "brand / model line name"
+    sem = getattr(actx, "sem", None)
+    s = sem.sim_names(child.name_cn, parent.name_cn) if sem is not None and sem.enabled else None
     if is_group_label(parent.name_cn):
         # grouping node; check the child isn't obviously from a different sense
         if branch_conflict(normalize(child.name_cn), parent):
             return 0.2, "branch conflict"
+        if s is not None and s < 0.2:
+            return 0.35, f"meaning unrelated to group '{parent.name_cn}' (embedding {s:.2f})"
         return 0.7, "grouping parent"
+    if s is not None and s >= 0.55:
+        return 0.6, f"related by meaning to '{parent.name_cn}' (embedding {s:.2f}) but not a kind of it"
     return 0.25, f"'{child.name_cn}' is not a type of '{parent.name_cn}'"
 
 
@@ -265,6 +271,9 @@ def _labels(idx, node: CategoryNode) -> list[CategoryNode]:
 def run_audit(db: Session, ctx: EngineContext, progress: Progress | None = None) -> dict:
     idx = ctx.index
     actx = _load_audit_context(db, ctx)
+    from .embeddings import SemanticIndex
+
+    actx.sem = SemanticIndex.for_nodes(db, ctx)
     budget = llm.LLMBudget()
     tr = ctx.translator(budget)
     db.execute(delete(BreadcrumbAudit).where(BreadcrumbAudit.project_id == ctx.project.id))

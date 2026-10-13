@@ -33,9 +33,32 @@ def _loop(name: str) -> None:
         run_job(job.id)
 
 
+def _keep_awake() -> None:
+    """Render's free plan sleeps after ~15 min without inbound HTTP traffic — background
+    jobs don't count. While a job is running, ping our own public URL every 4 minutes."""
+    import httpx
+    from sqlalchemy import func, select
+
+    from .models import JobRun
+
+    url = (os.getenv("RENDER_EXTERNAL_URL") or os.getenv("PUBLIC_URL") or "").rstrip("/")
+    if not url:
+        return
+    while not _stop.is_set():
+        try:
+            with SessionLocal() as db:
+                active = db.scalar(select(func.count()).where(JobRun.status.in_(("QUEUED", "RUNNING"))))
+            if active:
+                httpx.get(f"{url}/api/health", timeout=20)
+        except Exception:
+            log.debug("keep-awake ping failed", exc_info=True)
+        _stop.wait(240)
+
+
 def start_background(threads: int | None = None) -> list[threading.Thread]:
     n = threads or int(os.getenv("WORKER_THREADS", "3"))
-    out = []
+    out = [threading.Thread(target=_keep_awake, daemon=True, name="keep-awake")]
+    out[0].start()
     for i in range(n):
         t = threading.Thread(target=_loop, args=(f"worker-{i+1}",), daemon=True)
         t.start()

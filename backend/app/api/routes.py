@@ -716,6 +716,26 @@ def category_focus_ep(category: str = Query(..., min_length=1), competitor_id: s
     return _file(f"Category Focus - {category}.{format}", data, format)
 
 
+# ============================================================== master excel
+@router.get("/projects/{project_id}/master-export")
+def master_export(category: str | None = None, format: str = Query("xlsx", pattern="^(xlsx|csv|json)$"),
+                  p: Project = Depends(get_project), db: Session = Depends(get_db)):
+    from ..core.context import load_context
+    from ..core.master import build_master
+    from ..exporter import master_sheets, to_csv, to_xlsx
+
+    res = build_master(db, load_context(db, p), (category or "").strip() or None)
+    if format == "json":
+        return {"scope": res["scope"], "summary": {f"{t} — {s}": n for (t, s), n in res["summary"].items()}, "rows": res["rows"][:2000],
+                "total": len(res["rows"])}
+    sheets = master_sheets(res)
+    data = to_xlsx(sheets) if format == "xlsx" else to_csv(sheets)
+    label = res["scope"].replace("/", "-")
+    db.add(Export(project_id=p.id, export_key=f"master:{label}", format=format, filename=f"Master - {label}.{format}", row_count=len(res["rows"])))
+    db.commit()
+    return _file(f"Master - {label} - {p.name}.{format}", data, format)
+
+
 # ============================================================== exports
 def _file(name: str, data: bytes, fmt: str) -> Response:
     from urllib.parse import quote

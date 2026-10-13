@@ -407,6 +407,25 @@ def final_taxonomy(db: Session, pid: int) -> list[Sheet]:
     return [Sheet("Final Approved Taxonomy", cols, rows)]
 
 
+MASTER_COLS = ["Row Type", "Status", "Tree (final hierarchy)", "Name CN", "Name EN", "Current Breadcrumb CN", "Final Breadcrumb CN",
+               "Final Breadcrumb EN", "Final Parent", "Level", "URL", "Search Volume", "SRP Count", "Products", "Competitors",
+               "Competitor Breadcrumbs", "Confidence", "Priority", "Action / Reason", "Review Status"]
+
+
+def master_sheets(res: dict) -> list[Sheet]:
+    rows = []
+    for r in res["rows"]:
+        parts = (r["final_cn"] or "").split(" > ")
+        level = max(0, len(parts) - 1)
+        tree = ("    " * max(0, level - 1)) + ("└ " if level > 1 else "") + (("🔎 " if r["row_type"] == "SRP" else "") + (r["name_cn"] or ""))
+        rows.append([r["row_type"], r["status"], tree, r["name_cn"], r["name_en"], r["current_cn"], r["final_cn"], r["final_en"],
+                     parts[-2] if len(parts) >= 2 else None, level, r["url"], r["volume"], r["srp_count"], r["products"],
+                     r["competitors"], r["competitor_crumbs"], r["confidence"], r["priority"], r["action"], r["review"]])
+    summary = [["Scope", res["scope"]], ["Generated (UTC)", res["generated_at"]], ["Total rows", len(rows)], [None, None]]
+    summary += [[f"{t} — {s}", n] for (t, s), n in sorted(res["summary"].items())]
+    return [Sheet("Master", MASTER_COLS, rows), Sheet("Summary", ["Item", "Count"], summary)]
+
+
 def focus_sheets(res: dict) -> list[Sheet]:
     cols = ["Competitor", "Competitor Category", "Competitor Breadcrumb", "Competitor URL", "Status in Coupang", "Classification",
             "Coupang Category", "Coupang URL", "Coupang Breadcrumb CN", "Coupang Breadcrumb EN", "Suggested Parent",

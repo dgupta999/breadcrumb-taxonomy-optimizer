@@ -4,7 +4,7 @@ import { Trash2 } from "lucide-react";
 import { api, type Paged } from "@/lib/api";
 import type { Competitor, Gap } from "@/lib/types";
 import { useProject } from "@/lib/project";
-import { DataTable, ExportButtons, NeedProject } from "@/components/common";
+import { DataTable, ExportButtons, MasterButtons, NeedProject } from "@/components/common";
 import { JobProgress, useLatestJob } from "@/components/jobs";
 import { Badge, Button, Card, Crumb, Input, Label, PageHeader, StatusBadge } from "@/components/ui";
 import { Uploader } from "./Upload";
@@ -112,7 +112,7 @@ export default function CompetitorUpload() {
         className="mt-5"
         title="2 · Gap report — new pages and where they fall in Coupang"
         subtitle="One row per page to create (or existing page to move). A new parent is listed above its children. Breadcrumbs use Coupang's existing hierarchy for every existing level."
-        actions={<ExportButtons exportKey="competitor_gap_pages" label="Download gaps" />}
+        actions={<><MasterButtons /><ExportButtons exportKey="competitor_gap_pages" label="Gaps only" /></>}
       >
         <DataTable
           rows={rows}

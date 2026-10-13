@@ -23,7 +23,7 @@ const NAV = [
   { to: "/synonyms", label: "Synonyms", icon: Replace },
   { to: "/rules", label: "Approved Rules", icon: ShieldCheck },
   { to: "/review", label: "Review Queue", icon: ClipboardCheck },
-  { to: "/exports", label: "Exports", icon: Download },
+  { to: "/exports", label: "Master Excel", icon: Download },
   { to: "/history", label: "History", icon: History },
 ];
 

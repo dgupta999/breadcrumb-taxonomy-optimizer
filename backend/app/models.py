@@ -414,3 +414,15 @@ class JobRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Embedding(Base):
+    """Cached text embeddings (float16, base64) so re-runs never re-embed the same text."""
+    __tablename__ = "embeddings"
+    id: Mapped[int] = _id()
+    text_hash: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    text: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(String(60))
+    dims: Mapped[int] = mapped_column(Integer)
+    vector: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

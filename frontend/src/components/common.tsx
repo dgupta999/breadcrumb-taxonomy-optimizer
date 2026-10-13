@@ -32,6 +32,31 @@ export function ExportButtons({ exportKey, label }: { exportKey: string; label?:
   );
 }
 
+export function MasterButtons({ category, label = "Master Excel" }: { category?: string; label?: string }) {
+  const { projectId } = useProject();
+  const [busy, setBusy] = useState<string | null>(null);
+  const go = async (format: "xlsx" | "csv") => {
+    setBusy(format);
+    try {
+      await api.download(`/projects/${projectId}/master-export`, { category, format });
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <div className="inline-flex items-center gap-1.5">
+      <Button size="sm" onClick={() => go("xlsx")} disabled={!projectId || !!busy}>
+        {busy === "xlsx" ? <Spinner /> : <FileSpreadsheet size={13} />} {label}
+      </Button>
+      <Button variant="outline" size="sm" onClick={() => go("csv")} disabled={!projectId || !!busy}>
+        {busy === "csv" ? <Spinner /> : <Download size={13} />} CSV
+      </Button>
+    </div>
+  );
+}
+
 /** Searchable picker over the CURRENT taxonomy (only existing nodes can be chosen). */
 export function NodePicker({ open, onClose, onPick, title }: { open: boolean; onClose: () => void; onPick: (n: CategoryNode) => void; title: string }) {
   const { projectId } = useProject();

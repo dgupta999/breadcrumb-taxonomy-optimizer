@@ -240,3 +240,55 @@ def test_audit_nested_siblings_moved_up(env):
     from app.core.relations import SIBLING, relation
 
     assert relation("無線滑鼠", "電競滑鼠") == SIBLING
+
+
+# ---------------------------------------------------------------- speed layers: incremental + resume
+def test_incremental_and_resume(env):
+    from datetime import datetime, timezone
+
+    db, p = env
+    ctx = load_context(db, p)
+    first = map_srps(db, ctx, mode="full")
+    db.commit()
+    again = map_srps(db, load_context(db, p))           # nothing changed → nothing re-mapped
+    assert again["mapped_this_run"] == 0 and again["skipped_unchanged"] == first["total"]
+    future = datetime.now(timezone.utc).replace(year=2100)
+    resumed = map_srps(db, load_context(db, p), resume_from=future)  # all mapped before "run start" → redo all
+    assert resumed["mapped_this_run"] == first["total"]
+
+
+# ---------------------------------------------------------------- semantic layer (fake embedding service)
+def test_semantic_layer_rejects_unrelated_and_proposes(env, monkeypatch):
+    import numpy as np
+
+    from app.config import settings
+    from app.core import embeddings as E
+
+    db, p = env
+    monkeypatch.setattr(settings, "openai_api_key", "test-key")
+
+    def fake(texts):  # 記憶卡-like texts share one direction, everything else is orthogonal noise
+        out = []
+        for t in texts:
+            if "記憶卡" in t or "隨便卡" in t:
+                v = np.zeros(E.DIMS, dtype=np.float32); v[0] = 1
+            else:
+                rng = np.random.default_rng(abs(hash(t)) % (2**32)); v = rng.standard_normal(E.DIMS).astype(np.float32)
+                v[0] = 0
+            out.append(v)
+        return out
+
+    monkeypatch.setattr(E, "_call_openai", fake)
+    ctx = load_context(db, p)
+    s_rule = SRP(id=-5, keyword="wifi分享器", keyword_norm="wifi分享器", modifiers=[])
+    s_new = SRP(id=-6, keyword="隨便卡", keyword_norm="隨便卡", modifiers=[])
+    sem = E.SemanticIndex.for_srps(db, ctx, [s_rule, s_new])
+    assert sem.enabled
+    r = ctx.matcher.match("wifi分享器")
+    assert r.top is not None and r.top.node.name_cn == "網路/分享器"
+    sem.apply(s_rule, r)                                  # unrelated meaning (orthogonal) → rejected
+    assert r.top is None or r.top.node.name_cn != "網路/分享器"
+    r2 = ctx.matcher.match("隨便卡")
+    sem.apply(s_new, r2)                                  # no rule match, but same meaning as 記憶卡 → proposed for review
+    assert r2.method == "SEMANTIC" and r2.top.node.name_cn in ("記憶卡", "microSD") and r2.confidence < 70
+    db.rollback()

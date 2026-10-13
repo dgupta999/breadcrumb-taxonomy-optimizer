@@ -95,7 +95,14 @@ def h_map_srp(jc: JobContext) -> dict:
     ctx = load_context(jc.db, _project(jc.db, jc.job))
     if not ctx.index.nodes:
         raise ValueError("Upload the current taxonomy first")
-    return map_srps(jc.db, ctx, jc.progress, jc.job.params.get("srp_ids"))
+    p = jc.job.params or {}
+    resume = jc.job.started_at if p.get("resumed") else None
+    if p.get("resumed") and p.get("first_started_at"):
+        from datetime import datetime as _dt
+
+        resume = _dt.fromisoformat(p["first_started_at"])
+    return map_srps(jc.db, ctx, jc.progress, p.get("srp_ids"), mode=p.get("mode", "incremental"),
+                    resume_from=resume, commit=jc.db.commit)
 
 
 def h_audit(jc: JobContext) -> dict:
@@ -250,9 +257,27 @@ def run_job(job_id: int) -> None:
         db.close()
 
 
+RESUMABLE = {"MAP_SRP", "AUDIT_BREADCRUMBS", "COMPARE_TAXONOMY", "DETECT_GAPS", "BUILD_COMPETITOR_TREE",
+             "IMPORT_TAXONOMY", "IMPORT_SRP", "IMPORT_COMPETITOR_CRAWL", "BUILD_TAXONOMY"}
+MAX_RESUMES = 5
+
+
 def recover_stale_jobs() -> None:
+    """A server restart (deploy, free-plan sleep, out-of-memory) must not lose work:
+    interrupted jobs go back to the queue and continue where they stopped."""
     with SessionLocal() as db:
-        db.execute(update(JobRun).where(JobRun.status.in_(("RUNNING", "CANCEL_REQUESTED")))
+        for j in db.scalars(select(JobRun).where(JobRun.status.in_(("RUNNING", "CANCEL_REQUESTED")))):
+            p = dict(j.params or {})
+            n = int(p.get("resumes", 0))
+            if j.status == "RUNNING" and j.job_type in RESUMABLE and n < MAX_RESUMES:
+                p.update(resumes=n + 1, resumed=True)
+                p.setdefault("first_started_at", j.started_at.isoformat() if j.started_at else None)
+                j.params, j.status, j.message = p, "QUEUED", f"Resuming after server restart (attempt {n + 1})"
+            else:
+                j.status, j.completed_at = "FAILED", now()
+                j.error_message = "Server restarted while the job was running; re-run it."
+        db.commit()
+        db.execute(update(JobRun).where(JobRun.status.in_(("CANCEL_REQUESTED",)))
                    .values(status="FAILED", error_message="Worker restarted while job was running; re-run it.", completed_at=now()))
         db.execute(update(CrawlJob).where(CrawlJob.status == "RUNNING").values(status="FAILED", completed_at=now()))
         db.commit()

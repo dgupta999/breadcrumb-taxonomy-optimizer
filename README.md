@@ -75,6 +75,29 @@ The LLM never crawls, never builds breadcrumbs and never overrides a human appro
 
 Deploy the backend (Docker, Fly, Render, a VM, etc.) with `uvicorn app.main:app`. For long crawls, also run `python -m app.worker` with `EMBEDDED_WORKER=false`.
 
+## Speed, reliability and relevance layers
+
+**Speed.** SRP mapping caches normalised text, extractions, relations and per-category facts. 16,654 SRPs map in about 30 s locally, down from 103 s.
+
+**Incremental mapping.** Re-runs map only new SRPs, unless the taxonomy, synonyms or approvals changed (the tool tracks a fingerprint of these). Choose "full" to force a complete re-map.
+
+**Never loses work.** Mapping saves every 500 SRPs. If the server restarts (deploy, free-plan sleep, out of memory), interrupted jobs go back to the queue and **resume where they stopped**, up to 5 times. While a job runs, the server pings its own public URL (`RENDER_EXTERNAL_URL`) so Render's free plan doesn't sleep.
+
+**Meaning layer (vector embeddings).** With `OPENAI_API_KEY` set, every SRP and every category (name, English name and breadcrumb) is embedded with `text-embedding-3-small` (256 dimensions). Vectors are cached in the `embeddings` table, so each text is embedded once; 16k SRPs cost about $0.003. The layer:
+- re-ranks rule candidates by meaning (±20 points);
+- rejects rule matches whose meaning is clearly unrelated (similarity below 0.22);
+- for SRPs with no rule match, proposes the nearest category by meaning (similarity 0.62 or above), always as Low Confidence for review;
+- in the audit, flags children whose meaning is unrelated to their group parent.
+
+Rules (is-a relations) always come first. Without a key, the tool runs on rules only. Thresholds can be tuned with the `EMBEDDING_*` environment variables.
+
+**One master Excel** (the Master Excel page, the Category Focus page, or the Competitors page). For a category such as `3C`, or for everything, one sheet lists:
+- every existing category page;
+- every new page to create;
+- every SRP page.
+
+Each row has a Status (EXISTING / NEW / EXISTING → MOVE / → MERGE / SRP DUPLICATE / SRP → NEW CATEGORY…), current and final breadcrumb (CN/EN), the competitors that have it, demand, priority and the action. Rows are ordered as the final tree, and a Summary sheet gives the totals.
+
 ## Recommended workflow: your own crawl files + Category Focus
 
 1. **Upload Taxonomy**: upload the Coupang taxonomy and the SRP file.

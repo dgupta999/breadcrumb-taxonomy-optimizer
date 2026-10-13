@@ -114,14 +114,55 @@ def _duplicate(ext, cand, node) -> tuple[str, str | None]:
     return "NO", None
 
 
-def map_srps(db: Session, ctx: EngineContext, progress: Progress | None = None, only_ids: list[int] | None = None) -> dict:
+def mapping_fingerprint(db: Session, ctx: EngineContext) -> str:
+    """Changes whenever anything that can change an SRP's mapping changes."""
+    import hashlib
+
+    from ..models import ApprovedMapping, Synonym
+
+    h = hashlib.sha1()
+    for n in sorted(ctx.index.nodes.values(), key=lambda n: n.path_key):
+        h.update(f"{n.path_key}|{n.name_en or ''}\n".encode())
+    for s in db.scalars(select(Synonym).where(Synonym.project_id == ctx.project.id).order_by(Synonym.alias_norm)):
+        h.update(f"{s.alias_norm}>{s.canonical}>{s.preferred_node_id}\n".encode())
+    for a in db.scalars(select(ApprovedMapping).where(ApprovedMapping.project_id == ctx.project.id, ApprovedMapping.entity_type == "SRP")
+                        .order_by(ApprovedMapping.id)):
+        h.update(f"{a.match_key}:{a.decision}:{(a.payload or {}).get('target_path_key')}\n".encode())
+    from .embeddings import embeddings_enabled
+
+    h.update(f"emb={embeddings_enabled()}".encode())
+    return h.hexdigest()
+
+
+CHUNK = 500
+
+
+def map_srps(db: Session, ctx: EngineContext, progress: Progress | None = None, only_ids: list[int] | None = None,
+             mode: str = "incremental", resume_from: datetime | None = None, commit=None) -> dict:
+    """mode='incremental': only SRPs never mapped (or everything if taxonomy/synonyms/approvals changed).
+    mode='full': remap all. `resume_from`: skip SRPs already mapped by this (interrupted) run."""
     q = select(SRP).where(SRP.project_id == ctx.project.id)
     if only_ids:
         q = q.where(SRP.id.in_(only_ids))
-    srps = db.scalars(q).all()
+    all_srps = db.scalars(q.order_by(SRP.id)).all()
+    fp = mapping_fingerprint(db, ctx)
+    settings_ = dict(ctx.project.settings or {})
+    changed = settings_.get("srp_mapping_fingerprint") != fp
+    if resume_from is not None:
+        rf = resume_from if resume_from.tzinfo else resume_from.replace(tzinfo=timezone.utc)
+        srps = [s for s in all_srps if s.mapped_at is None or (s.mapped_at if s.mapped_at.tzinfo else s.mapped_at.replace(tzinfo=timezone.utc)) < rf]
+    elif mode == "incremental" and not changed and not only_ids:
+        srps = [s for s in all_srps if s.mapped_at is None]
+    else:
+        srps = all_srps
+    from .embeddings import SemanticIndex
+
+    sem = SemanticIndex.for_srps(db, ctx, srps)
     budget = llm.LLMBudget()
     tr = ctx.translator(budget)
-    stats = {"total": len(srps), "auto": 0, "review": 0, "low": 0, "no_match": 0, "llm_calls": 0, "human": 0, "duplicates": 0}
+    stats = {"total": len(all_srps), "mapped_this_run": len(srps), "skipped_unchanged": len(all_srps) - len(srps),
+             "auto": 0, "review": 0, "low": 0, "no_match": 0, "llm_calls": 0, "human": 0, "duplicates": 0,
+             "semantic_layer": sem.enabled, "semantic_rejected": 0}
     pending_en: list[tuple[SRP, object, CategoryNode | None]] = []
 
     for i, srp in enumerate(srps):
@@ -130,6 +171,9 @@ def map_srps(db: Session, ctx: EngineContext, progress: Progress | None = None, 
         approved_node = ctx.resolve_target(approval) if approval and approval.decision in ("APPROVE", "CHANGE_CATEGORY", "MARK_DUPLICATE") else None
         res = ctx.matcher.match(srp.keyword, extra_text=srp.keyword_en, approved_node_id=approved_node)
         ext = res.extraction
+        if sem.enabled and method_is_rule(res):
+            rej = sem.apply(srp, res)  # meaning check: re-rank / reject semantically unrelated categories
+            stats["semantic_rejected"] += rej
         top, conf, method = res.top, res.confidence, res.method
         reason_bits: list[str] = []
         rejected = approval is not None and approval.decision == "REJECT"
@@ -210,9 +254,25 @@ def map_srps(db: Session, ctx: EngineContext, progress: Progress | None = None, 
             srp.review_status = srp.confidence_band
         stats["human"] += method == "HUMAN"
         stats[{"AUTO_APPROVED": "auto", "NEEDS_REVIEW": "review", "LOW_CONFIDENCE": "low", "NO_MATCH": "no_match"}[srp.confidence_band]] += 1
-        if progress and (i % 25 == 0 or i == len(srps) - 1):
-            progress(i + 1, len(srps))
+        if (i + 1) % CHUNK == 0 or i == len(srps) - 1:
+            _english(ctx, tr, pending_en)
+            pending_en = []
+            if commit:
+                commit()  # persist each chunk so an interrupted job can resume
+            if progress:
+                progress(i + 1, len(srps))
 
+    settings_["srp_mapping_fingerprint"] = fp
+    ctx.project.settings = settings_
+    db.flush()
+    return stats
+
+
+def method_is_rule(res) -> bool:
+    return res.method in ("RULE", "NONE")
+
+
+def _english(ctx: EngineContext, tr, pending_en) -> None:
     # English: deterministic first, then one batched AI call for the rest.
     for srp, ext, node in pending_en:
         en, src = _srp_english(srp, ext, node, tr)
@@ -232,5 +292,3 @@ def map_srps(db: Session, ctx: EngineContext, progress: Progress | None = None, 
             srp.breadcrumb_en = path  # same entity as the category → no repeated level
         else:
             srp.breadcrumb_en = f"{path} > {en}" if path and en else None
-    db.flush()
-    return stats

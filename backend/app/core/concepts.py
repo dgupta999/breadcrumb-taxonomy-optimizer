@@ -161,6 +161,13 @@ class Vocabulary:
         return t.canonical_key if t else key
 
     def extract(self, text: str) -> Extraction:
+        cache = self.__dict__.setdefault("_extract_cache", {})
+        hit = cache.get(text)
+        if hit is None:
+            hit = cache[text] = self._extract(text)
+        return hit
+
+    def _extract(self, text: str) -> Extraction:
         key, bounds, hard = _keyed(text)
         ext = Extraction(text=text, norm=normalize(text), key=key)
         if not key:

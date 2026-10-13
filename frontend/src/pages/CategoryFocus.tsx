@@ -4,7 +4,7 @@ import { Download, FileSpreadsheet, Search } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Competitor } from "@/lib/types";
 import { useProject } from "@/lib/project";
-import { DataTable, FilterChips, NeedProject } from "@/components/common";
+import { DataTable, FilterChips, MasterButtons, NeedProject } from "@/components/common";
 import { Badge, Button, Card, Crumb, Empty, Input, PageHeader, Spinner, Stat, StatusBadge } from "@/components/ui";
 
 type Row = {
@@ -87,9 +87,9 @@ export default function CategoryFocus() {
           </Button>
           {!!comps.data?.length && <FilterChips label="Competitors" options={comps.data.map((c) => c.name)} value={compSel} onChange={setCompSel} />}
           {data && (
-            <div className="ml-auto flex gap-1.5">
-              <Button variant="outline" size="sm" onClick={() => dl("xlsx")}><FileSpreadsheet size={13} className="text-emerald-600" /> XLSX</Button>
-              <Button variant="outline" size="sm" onClick={() => dl("csv")}><Download size={13} /> CSV</Button>
+            <div className="ml-auto flex items-center gap-1.5">
+              <MasterButtons category={term} label={`Master Excel — ${term}`} />
+              <Button variant="ghost" size="sm" onClick={() => dl("xlsx")} title="Competitor-only view of this category"><FileSpreadsheet size={13} className="text-emerald-600" /> Competitor view</Button>
             </div>
           )}
         </form>
