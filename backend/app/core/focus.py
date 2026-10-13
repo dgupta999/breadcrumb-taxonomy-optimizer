@@ -135,6 +135,11 @@ def category_focus(db: Session, ctx: EngineContext, term: str, competitor_ids: l
     for cc in sorted(cats.values(), key=lambda c: (c.competitor_id, c.breadcrumb)):
         m = maps.get(cc.id)
         in_focus = fm.path(labels_of(cc)) or fm.label(cc.name, parts=True) or (m is not None and m.matched_node_id in focus_nodes)
+        if not in_focus and focus_nodes:
+            # e.g. focus "3C": PChome's top level is 電腦/週邊, not "3C", but its categories
+            # map (or would be placed) inside Coupang's 3C subtree → they belong to 3C too
+            anc, _ = anchor_for(cc)
+            in_focus = (m is not None and m.parent_matched_node_id in focus_nodes) or (anc is not None and anc.id in focus_nodes)
         if not in_focus:
             continue
         if m is None:
@@ -214,6 +219,34 @@ def category_focus(db: Session, ctx: EngineContext, term: str, competitor_ids: l
                 "competitors_with_it": sorted(x for x in matched_nodes.get(n.id, set()) if x)}
                for n in sorted(focus_nodes.values(), key=lambda n: n.breadcrumb_cn) if not n.is_inferred]
 
+    # SRPs in this category: mapped to the focus category or ANY of its descendants,
+    # plus unmatched SRPs that are demand for a missing category in this focus.
+    srp_rows = []
+    seen_srp: set[int] = set()
+    for s in sorted(srps, key=lambda s: -(s.search_volume or 0)):
+        n = idx.nodes.get(s.matched_node_id) if s.matched_node_id else None
+        if n is not None and n.id in focus_nodes:
+            seen_srp.add(s.id)
+            srp_rows.append({"keyword": s.keyword, "url": s.url, "search_volume": s.search_volume, "status": "MAPPED",
+                             "category": n.name_cn, "category_breadcrumb": n.breadcrumb_cn, "srp_breadcrumb_cn": s.breadcrumb_cn,
+                             "srp_breadcrumb_en": s.breadcrumb_en, "confidence": s.confidence, "review_status": s.review_status,
+                             "duplicate_intent": s.duplicate_intent})
+    by_kw = {s.keyword: s for s in srps}
+    for r in rows:
+        if r["status"] != "MISSING" or not r["suggested_breadcrumb_cn"]:
+            continue
+        for sup in r["supporting_srps"]:
+            s = by_kw.get(sup["keyword"])
+            if s is None or s.id in seen_srp or s.matched_node_id:
+                continue
+            seen_srp.add(s.id)
+            srp_rows.append({"keyword": s.keyword, "url": s.url, "search_volume": s.search_volume, "status": "NEEDS NEW CATEGORY",
+                             "category": r["competitor_category"], "category_breadcrumb": r["suggested_breadcrumb_cn"],
+                             "srp_breadcrumb_cn": r["suggested_breadcrumb_cn"] if is_a(r["competitor_category"], s.h1 or s.keyword, ctx.vocab)
+                             and is_a(s.h1 or s.keyword, r["competitor_category"], ctx.vocab) else f"{r['suggested_breadcrumb_cn']} > {s.h1 or s.keyword}",
+                             "srp_breadcrumb_en": None, "confidence": None, "review_status": s.review_status,
+                             "duplicate_intent": s.duplicate_intent})
+
     summary = defaultdict(int)
     for r in rows:
         summary[r["status"]] += 1
@@ -221,5 +254,6 @@ def category_focus(db: Session, ctx: EngineContext, term: str, competitor_ids: l
         "category": term, "match_keys": sorted(fm.keys),
         "coupang_focus": [{"id": n.id, "name": n.name_cn, "breadcrumb_cn": n.breadcrumb_cn} for n in top_focus[:10]],
         "summary": dict(summary), "url_counts": dict(counts), "unmapped": unmapped,
-        "rows": rows, "urls": urls, "coupang_categories": coupang,
+        "rows": rows, "urls": urls, "coupang_categories": coupang, "srps": srp_rows,
+        "srp_volume": sum(r["search_volume"] or 0 for r in srp_rows),
     }

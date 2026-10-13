@@ -20,6 +20,7 @@ import re
 
 from .lexicon import BRAND_CASE, MODIFIER_EN
 from .normalize import has_cjk, norm_key
+from .relations import SAME, relation
 
 Progress = Callable[[int, int], None]
 
@@ -53,6 +54,30 @@ def _srp_english(srp: SRP, ext, node: CategoryNode | None, tr) -> tuple[str | No
             return (" ".join(en_mods + [node.name_en])).strip(), "RULE"
     en, src = tr.lookup(srp.h1 or srp.keyword)
     return (en, "AI") if en else (None, "MISSING")
+
+
+def same_entity(vocab, leaf: str, node: CategoryNode) -> bool:
+    """SRP page is the same entity as its category (ssd → SSD, 電腦喇叭 → PC 用喇叭, ssd推薦 → SSD)."""
+    ext = vocab.extract(leaf)
+    # only generic words (推薦, 便宜, 比較…) are ignored; brand / spec / attribute make a narrower page
+    k = ext.key
+    for m in ext.modifiers:
+        if ext.modifier_types.get(m) == "GENERIC":
+            k = k.replace(m, "", 1)
+    for name in filter(None, (node.name_cn, node.name_en)):
+        nk = norm_key(name)
+        if ext.key == nk or (k and relation(k, nk, vocab) == SAME):
+            return True
+    return bool(ext.alias_exact and ext.alias_exact.canonical_key in {norm_key(node.name_cn), norm_key(node.name_en or "")})
+
+
+def srp_breadcrumb(vocab, path: str | None, node: CategoryNode, leaf: str | None) -> str | None:
+    """Category breadcrumb + SRP H1 — without repeating the level when both are the same entity."""
+    if not path:
+        return None
+    if not leaf or same_entity(vocab, leaf, node):
+        return path
+    return f"{path} > {leaf}"
 
 
 def _modifier_en(mod: str, display: str) -> str | None:
@@ -155,7 +180,7 @@ def map_srps(db: Session, ctx: EngineContext, progress: Progress | None = None, 
         srp.mapped_at = datetime.now(timezone.utc)
 
         if node:
-            srp.breadcrumb_cn = f"{node.breadcrumb_cn} > {srp.h1 or srp.keyword}"
+            srp.breadcrumb_cn = srp_breadcrumb(ctx.vocab, node.breadcrumb_cn, node, srp.h1 or srp.keyword)
             dup, action = _duplicate(ext, top, node)
             srp.duplicate_intent, srp.duplicate_node_id = dup, (node.id if dup != "NO" else None)
             if approval and approval.decision == "MARK_DUPLICATE":
@@ -203,6 +228,9 @@ def map_srps(db: Session, ctx: EngineContext, progress: Progress | None = None, 
         path, psrc = node_en_path(ctx, node, tr)
         srp.keyword_en_generated = en if not srp.keyword_en else None
         srp.en_source = "AI" if "AI" in (src, psrc) else src
-        srp.breadcrumb_en = f"{path} > {en}" if path and en else None
+        if same_entity(ctx.vocab, srp.h1 or srp.keyword, node):
+            srp.breadcrumb_en = path  # same entity as the category → no repeated level
+        else:
+            srp.breadcrumb_en = f"{path} > {en}" if path and en else None
     db.flush()
     return stats

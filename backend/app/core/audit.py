@@ -372,6 +372,18 @@ def run_audit(db: Session, ctx: EngineContext, progress: Progress | None = None)
                 action, conf = "MOVE + CREATE PARENT", min(85, 60 + 10 * len(set(who)))
                 reason = f"'{node.name_cn}' is not a type of '{parent.name_cn}'. {', '.join(sorted(set(who)))} use parent '{pname}', which does not exist yet."
                 evidence["competitors"] = sorted(set(who))
+            elif parent is not None and relation(node.norm_key, parent.norm_key, ctx.vocab) in (SUPERTYPE, SIBLING):
+                rel_kind = relation(node.norm_key, parent.norm_key, ctx.vocab)
+                tgt = idx.nodes.get(parent.parent_id) if parent.parent_id else None
+                # the broader / sibling type belongs next to (or above) its parent, not below it
+                new_parent, new_parent_name = tgt, (tgt.name_cn if tgt else None)
+                new_anc_labels = ([a.name_cn for a in _labels(idx, tgt)] + [tgt.name_cn]) if tgt is not None and not tgt.is_root else []
+                action, conf = "MOVE", 85
+                if rel_kind == SUPERTYPE:
+                    reason = f"'{parent.name_cn}' is a kind of '{node.name_cn}', so '{node.name_cn}' cannot sit below it. Move it up to '{new_parent_name or 'top level'}'; '{parent.name_cn}' should become its child."
+                else:
+                    reason = f"'{node.name_cn}' and '{parent.name_cn}' are sibling types of the same product. Place them side by side under '{new_parent_name or 'top level'}'."
+                evidence["entity_relation"] = rel_kind
             else:
                 cands = [n for n in idx.real_nodes() if is_group_label(n.name_cn) and not n.is_inferred and n.id not in {node.id, parent.id if parent else -1}
                          and not idx.is_ancestor(node, n)]

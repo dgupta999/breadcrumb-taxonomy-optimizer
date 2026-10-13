@@ -226,3 +226,17 @@ def test_srp_support_uses_is_a(env):
     kws = {s.keyword for s, _ in sidx.support(["滑鼠"])}
     assert {"羅技滑鼠", "電競滑鼠", "無線滑鼠"} <= kws
     assert "滑鼠墊" not in kws
+
+
+def test_srp_breadcrumb_no_repeated_entity(env):
+    db, _ = env
+    assert not srp(db, "ssd").breadcrumb_cn.endswith("SSD > SSD")          # same entity → no extra level
+    assert srp(db, "ssd推薦").breadcrumb_cn.endswith("> SSD")               # generic word only
+    assert srp(db, "1tb ssd").breadcrumb_cn.endswith("SSD > 1TB SSD")       # spec variant keeps its level
+
+
+def test_audit_nested_siblings_moved_up(env):
+    from app.core.audit import relevance, AuditContext
+    from app.core.relations import SIBLING, relation
+
+    assert relation("無線滑鼠", "電競滑鼠") == SIBLING

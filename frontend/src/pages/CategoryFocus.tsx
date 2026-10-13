@@ -41,6 +41,8 @@ type Focus = {
   rows: Row[];
   urls: { competitor: string; url: string; page_type: string; breadcrumb?: string | null; h1?: string | null; status_code?: number | null }[];
   coupang_categories: { category: string; name_en?: string | null; breadcrumb_cn: string; url?: string | null; competitors_with_it: string[] }[];
+  srps: { keyword: string; url?: string | null; search_volume?: number | null; status: string; category: string; category_breadcrumb?: string | null; srp_breadcrumb_cn?: string | null; srp_breadcrumb_en?: string | null; confidence?: number | null; duplicate_intent?: string | null }[];
+  srp_volume: number;
 };
 
 const STATUS_TONE: Record<string, string> = { PRESENT: "green", "PRESENT (BROADER)": "blue", "PRESENT (MISPLACED)": "amber", MISSING: "red", REVIEW: "amber", "NOT COMPARED": "gray" };
@@ -52,7 +54,7 @@ export default function CategoryFocus() {
   const [term, setTerm] = useState("");
   const [compSel, setCompSel] = useState<string[]>([]);
   const [statusSel, setStatusSel] = useState<string[]>([]);
-  const [tab, setTab] = useState<"categories" | "urls" | "coupang">("categories");
+  const [tab, setTab] = useState<"categories" | "urls" | "coupang" | "srps">("categories");
   const compIds = (comps.data || []).filter((c) => compSel.includes(c.name)).map((c) => c.id);
   const { data, isFetching, error } = useQuery({
     queryKey: ["focus", projectId, term, compIds],
@@ -98,11 +100,12 @@ export default function CategoryFocus() {
 
       {data && (
         <div className="mt-5 space-y-5">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
             <Stat label="Competitor categories" value={data.rows.length} hint={`matched on: ${data.match_keys.slice(0, 4).join(", ")}`} />
             <Stat label="Present in Coupang" value={(data.summary.PRESENT || 0) + (data.summary["PRESENT (BROADER)"] || 0)} tone="text-emerald-600" />
             <Stat label="Missing in Coupang" value={data.summary.MISSING || 0} tone="text-rose-600" />
             <Stat label="Misplaced / review" value={(data.summary["PRESENT (MISPLACED)"] || 0) + (data.summary.REVIEW || 0)} tone="text-amber-600" />
+            <Stat label="SRPs in category" value={data.srps.length} hint={`volume ${data.srp_volume.toLocaleString()}`} />
             <Stat label="Competitor URLs" value={data.urls.length} hint={Object.entries(data.url_counts).map(([k, v]) => `${k.toLowerCase()} ${v}`).join(" · ")} />
           </div>
           <div className="text-xs text-slate-600">
@@ -111,7 +114,7 @@ export default function CategoryFocus() {
           </div>
 
           <div className="flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
-            {([["categories", `Competitor categories (${data.rows.length})`], ["urls", `Competitor URLs (${data.urls.length})`], ["coupang", `Coupang categories (${data.coupang_categories.length})`]] as const).map(([k, l]) => (
+            {([["categories", `Competitor categories (${data.rows.length})`], ["urls", `Competitor URLs (${data.urls.length})`], ["coupang", `Coupang categories (${data.coupang_categories.length})`], ["srps", `SRPs (${data.srps.length})`]] as const).map(([k, l]) => (
               <button key={k} onClick={() => setTab(k)} className={`rounded-md px-3 py-1.5 ${tab === k ? "bg-white font-medium shadow-sm" : "text-slate-600"}`}>{l}</button>
             ))}
           </div>
@@ -206,6 +209,23 @@ export default function CategoryFocus() {
                   { key: "b", header: "Breadcrumb", className: "min-w-[260px]", render: (u) => <Crumb path={u.breadcrumb} /> },
                   { key: "h", header: "H1", render: (u) => <span className="text-xs">{u.h1}</span> },
                   { key: "s", header: "Status", render: (u) => <span className="text-xs tabular-nums">{u.status_code ?? "—"}</span> },
+                ]}
+              />
+            </Card>
+          )}
+
+          {tab === "srps" && (
+            <Card subtitle="SRPs mapped to this category or any of its child categories (any depth), plus unmatched SRPs that are demand for a missing category here.">
+              <DataTable
+                rows={data.srps.map((s, i) => ({ ...s, id: i + 1 }))}
+                empty="No SRPs fall under this category."
+                columns={[
+                  { key: "k", header: "SRP keyword", render: (s) => <div><div className="font-medium">{s.keyword}</div>{s.url && <a href={s.url} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-600">open ↗</a>}</div> },
+                  { key: "v", header: "Volume", render: (s) => <span className="tabular-nums text-xs">{(s.search_volume ?? 0).toLocaleString()}</span> },
+                  { key: "s", header: "Status", render: (s) => <Badge tone={s.status === "MAPPED" ? "green" : "violet"}>{s.status}</Badge> },
+                  { key: "c", header: "Category", render: (s) => <span className="text-sm">{s.category}</span> },
+                  { key: "b", header: "SRP breadcrumb (CN / EN)", className: "min-w-[340px]", render: (s) => <div><Crumb path={s.srp_breadcrumb_cn} />{s.srp_breadcrumb_en && <div className="text-[11px] text-slate-400">{s.srp_breadcrumb_en}</div>}</div> },
+                  { key: "d", header: "Duplicate", render: (s) => <StatusBadge value={s.duplicate_intent} /> },
                 ]}
               />
             </Card>

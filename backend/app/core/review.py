@@ -7,7 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..models import (
-    SRP, ApprovedMapping, BreadcrumbAudit, CategoryNode, CompetitorCategory, CompetitorMapping, ManualOverride,
+    SRP, ApprovedMapping, BreadcrumbAudit, CategoryNode, CompetitorCategory, CompetitorMapping, ManualOverride, Project,
     ReviewAction, TaxonomyGap,
 )
 from .normalize import norm_key
@@ -71,9 +71,16 @@ def apply_review(db: Session, pid: int, etype: str, eid: int, action: str, paylo
             n = _node(db, pid, payload.get("node_id"))
             _override(db, pid, "srp", eid, "matched_node_id", cur.name_cn if cur else None, n.name_cn, who)
             obj.matched_node_id = n.id
-            obj.breadcrumb_cn = f"{n.breadcrumb_cn} > {obj.h1 or obj.keyword}"
+            from .context import load_context
+            from .srp_mapping import same_entity, srp_breadcrumb
+
+            vocab = load_context(db, db.get(Project, pid)).vocab
+            obj.breadcrumb_cn = srp_breadcrumb(vocab, n.breadcrumb_cn, n, obj.h1 or obj.keyword)
             en = obj.keyword_en or obj.keyword_en_generated
-            obj.breadcrumb_en = f"{n.breadcrumb_en} > {en}" if n.breadcrumb_en and en else None
+            if same_entity(vocab, obj.h1 or obj.keyword, n):
+                obj.breadcrumb_en = n.breadcrumb_en
+            else:
+                obj.breadcrumb_en = f"{n.breadcrumb_en} > {en}" if n.breadcrumb_en and en else None
             obj.match_method, obj.confidence, obj.confidence_band, obj.potential_gap = "HUMAN", 100, "AUTO_APPROVED", False
             obj.reason = f"Human set category to '{n.name_cn}'" + (f" — {note}" if note else "")
             _rule(db, pid, "SRP", key, "CHANGE_CATEGORY", n, who)

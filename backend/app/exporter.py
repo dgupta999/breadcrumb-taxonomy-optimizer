@@ -423,6 +423,10 @@ def focus_sheets(res: dict) -> list[Sheet]:
         Sheet("Category Focus", cols, rows),
         Sheet("Competitor URLs", ["Competitor", "URL", "Page Type", "Breadcrumb", "H1", "Title", "Status Code"], urls),
         Sheet("Coupang Categories", ["Coupang Category", "Name EN", "Breadcrumb CN", "URL", "Competitors With It"], coupang),
+        Sheet("SRPs in Category", ["SRP Keyword", "SRP URL", "Search Volume", "Status", "Category", "Category Breadcrumb",
+                                   "SRP Breadcrumb CN", "SRP Breadcrumb EN", "Confidence", "Duplicate Intent", "Review Status"],
+              [[s["keyword"], s["url"], s["search_volume"], s["status"], s["category"], s["category_breadcrumb"], s["srp_breadcrumb_cn"],
+                s["srp_breadcrumb_en"], s["confidence"], s["duplicate_intent"], s["review_status"]] for s in res.get("srps", [])]),
     ]
 
 

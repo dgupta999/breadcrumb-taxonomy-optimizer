@@ -119,6 +119,12 @@ This rule also drives:
 
 The logic lives in `backend/app/core/relations.py`.
 
+**Entity-aware breadcrumbs.**
+- **An SRP that is the same entity as its category** gets the category breadcrumb with no repeated level, e.g. `… > SSD`, not `… > SSD > SSD`. This applies to synonyms and generic-word variants such as `ssd推薦` or `電腦喇叭`, and the SRP is flagged as duplicate intent.
+- **A brand, spec or attribute variant** keeps its own level, e.g. `… > SSD > 1TB SSD` or `… > 滑鼠 > 電競滑鼠`.
+- **The audit moves misplaced categories up:** a category is moved up when its parent is a narrower kind of it (滑鼠 under 無線滑鼠), or when two sibling types are nested (無線滑鼠 under 電競滑鼠).
+- **Category Focus on a broad category** (e.g. `3C`) covers every child category at any depth, every SRP mapped anywhere inside it, and every competitor category whose Coupang placement falls inside it, even when the competitor names its top level differently.
+
 **Normalization.** NFKC normalization (full-width → half-width), lowercase, unified hyphens, `128 gb → 128gb`, `Wi Fi → wifi`, `micro sd → microsd`, and variant characters (`週邊 → 周邊`). The original keyword is kept for display.
 
 **Core product extraction.** Uses a vocabulary built from category names, name parts (`網路/分享器` → `網路`, `分享器`), latin tokens, head suffixes and synonyms. The longest match that ends a segment wins (`ASUS 筆電充電器` → `筆電充電器`). Chinese is head-final, so `筆電支架` → core `支架`, modifier `筆電`. Modifiers are classified as brand, spec, attribute or generic.
